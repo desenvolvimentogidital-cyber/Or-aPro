@@ -45,6 +45,7 @@ export type OperationalStatus = 'planejamento' | 'em_execucao' | 'paralisada' | 
 export interface WorkSchedule {
   id: string;
   title: string;
+  siteAddress?: string; // Local da obra informado pelo responsável; não usar endereço da empresa como obra.
   quoteId?: string;
   startDate: string;
   hoursPerDay: number;
