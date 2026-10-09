@@ -68,7 +68,7 @@ try{
  await bottom.waitFor({state:'visible'});
  assert.equal(await side.isVisible(),false,'Preview de celular deve ocultar sidebar');
  const sim=await page.locator('main').boundingBox();
- assert.ok(sim.width>=390&&sim.width<=425,'Simulacao de celular desktop manteve moldura de 420px');
+ assert.ok(sim.width>=390&&sim.width<=425,'Simulacao de celular desktop manteve moldura de 420px; largura medida='+sim.width);
  await page.getByRole('button',{name:'Fluido'}).click();
  await side.waitFor({state:'visible'});
  console.log('PASS alternancia manual de visualizacao desktop continua disponivel');
