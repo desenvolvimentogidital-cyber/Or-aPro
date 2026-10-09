@@ -4,6 +4,7 @@ import {estimateSchedule,scheduleWorkdayDates} from './scheduleMath.js';
 import {physicalFinancial} from './physicalFinancial.js';
 import {measuredQuantity,progressPercent} from './execution.js';
 import {sinapiOriginLabel} from './sinapiRegional.js';
+import {buildScheduleDashboardCover} from './scheduleDashboardDocument.js';
 const esc=(v: unknown)=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch));
 const fmt=(v:number)=>Number.isFinite(v)?v.toLocaleString('pt-BR',{maximumFractionDigits:3}):'—';
 const money=(v:number)=>Number.isFinite(v)?v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—';
@@ -13,6 +14,7 @@ const weekdays=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const weekday=(v:string)=>weekdays[new Date(v+'T12:00:00Z').getUTCDay()];
 export function buildScheduleDocument(schedule:WorkSchedule,quote?:Quote,company?:CompanySettings):string {
   const report=estimateSchedule(schedule);
+  const cover=buildScheduleDashboardCover(schedule,quote,company);
   const physical=physicalFinancial(schedule,quote);
   const labels = new Map(schedule.tasks.map((t,i)=>[t.id,`${i+1} · ${t.composition.code}`]));
   // Datas reais: 15 dias úteis por página, com data e dia da semana em cada coluna.
@@ -62,7 +64,7 @@ footer{color:#53677e;border-color:#d1dbe5}
 .time-cell.head small{color:#677e94}.time-cell.active{background:#f97316;border-right-color:#fff2e3}
 .pad{padding:10px}
 @media print{html,body{background:#fff;color:#1b3048}body{padding:0}.meta{grid-template-columns:repeat(4,1fr)}.timeline-page{break-before:page;page-break-before:always}.time-row{break-inside:avoid-page}}
-</style></head><body><header><h1>Cronograma de execução</h1><div class="sub">${esc(company?.tradeName||company?.name||'Empresa não identificada')} · ${esc(schedule.title)}</div><div class="pill">${esc((schedule.operationalStatus||'planejamento').replace('_',' '))} · planejamento técnico, não promessa contratual</div></header>
+${cover.css}</style></head><body>${cover.html}<header><h1>Cronograma de execução</h1><div class="sub">${esc(company?.tradeName||company?.name||'Empresa não identificada')} · ${esc(schedule.title)}</div><div class="pill">${esc((schedule.operationalStatus||'planejamento').replace('_',' '))} · planejamento técnico, não promessa contratual</div></header>
 <div class="meta"><div class="card">Orçamento vinculado<b>${esc(quote?.number||'Não informado')}</b>${esc(quote?.clientName||'')}</div><div class="card">Início previsto<b>${date(schedule.startDate)}</b>Término: ${date(report.finishDate)}</div><div class="card">Prazo estimado<b>${report.workingDays===null?'Pendente':`${report.workingDays} dias úteis`}</b>${report.pending} etapa(s) sem cálculo</div><div class="card">Horas-homem<b>${fmt(report.totalHH)} HH</b>SINAPI: ${esc(reference)}</div><div class="card">Jornada e eficiência<b>${fmt(schedule.hoursPerDay)} h/dia · ${fmt(schedule.efficiency*100)}%</b>Valores definidos para a obra</div><div class="card">Calendário<b>${schedule.scheduleMode==='dependencias'?'Com dependências':'Sequencial'}</b>${(schedule.holidays||[]).length} dia(s) não úteis informados</div></div>
 <section><h2>Etapas, equipes e datas previstas</h2>${report.entries.length?`<table><thead><tr><th style="width:5%">#</th><th>Composição / serviço</th><th style="width:12%">Quantidade</th><th style="width:10%">HH</th><th style="width:11%">Prazo</th><th style="width:11%">Início</th><th style="width:11%">Término</th><th style="width:12%">Medido</th></tr></thead>${rows}</table>`:'<p>Nenhuma etapa cadastrada.</p>'}</section>
 <section><h2>Físico-financeiro dos itens vinculados</h2><div class="totals"><div class="card">Valor vinculado<b>${money(physical.planned)}</b></div><div class="card">Valor proporcional medido<b>${money(physical.measured)}</b></div><div class="card">Avanço dos itens cobertos<b>${physical.percent===null?'Não calculado':`${fmt(physical.percent)}%`}</b></div></div>${warns?`<ul class="sub">${warns}</ul>`:''}</section>
