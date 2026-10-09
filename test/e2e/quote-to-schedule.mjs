@@ -73,12 +73,11 @@ try{
   ['Divisória drywall','100004',250],
   ['Pintura acrílica de paredes','100005',600]
  ]){
-   const parent=page.locator('div.rounded-xl.border.border-white\\/10.bg-\\[\\#0b0e15\\]').filter({has:page.getByRole('button',{name:new RegExp(label)})}).first();
-   // Use apenas o botao principal que expande o item do orçamento.
-   await page.getByRole('button',{name:new RegExp(label)}).first().click();
-   await page.getByLabel(/Confirme a composição adequada/).selectOption(code+'|m²');
-   await page.getByLabel(/Prazo desejado em dias úteis/).fill('10');
-   await page.getByRole('button',{name:'Adicionar etapa com equipe simulada'}).click();
+   const region=page.getByRole('region',{name:'Do orçamento para o cronograma'});
+   await region.getByRole('button',{name:new RegExp(label)}).first().click();
+   await region.getByLabel(/Confirme a composição adequada/).selectOption(code+'|m²');
+   await region.getByLabel(/Prazo desejado em dias úteis/).fill('10');
+   await region.getByRole('button',{name:'Adicionar etapa com equipe simulada'}).click();
    await page.getByText('Este item já está ligado', {exact:false}).first().waitFor({timeout:3000}).catch(()=>{});
    const schedules=store.payload.schedules||[];
    const task=schedules[0]?.tasks?.find(t=>t.composition.code===code);
