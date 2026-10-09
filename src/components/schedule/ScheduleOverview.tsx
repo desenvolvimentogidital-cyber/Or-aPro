@@ -3,6 +3,7 @@ import {Activity, BarChart3, Building2, CalendarDays, Clock3, Download, FileChec
 import type {WorkSchedule} from '../../types/schedule';
 import type {Quote,CompanySettings} from '../../types/index';
 import {scheduleOverviewModel,shortDate} from '../../utils/scheduleOverview';
+import {safeImageSrc} from '../../utils/quoteDocument';
 import type {ScheduleOverviewModel,OverviewStage} from '../../utils/scheduleOverview';
 
 type Props={schedule:WorkSchedule;quote?:Quote;company?:CompanySettings;onPreparePDF:()=>void};
@@ -27,6 +28,7 @@ function physicalLine(data:ScheduleOverviewModel['months'],field:'planned'|'actu
 export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPreparePDF})=>{
  const today=new Date();const date=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
  const model=scheduleOverviewModel(schedule,quote,date);
+ const brandLogo=safeImageSrc(company?.logoUrl);
  const summary=model.stages;
  const labels=model.months;
  const planned=physicalLine(labels,'planned'),actual=physicalLine(labels,'actual');
@@ -35,7 +37,7 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
    <div className="relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-xl border border-orange-600/40 bg-gradient-to-r from-[#06121e] via-[#071d30] to-[#07111b] px-4 py-4 sm:px-5">
      <div className="absolute right-0 top-0 hidden h-full w-32 -skew-x-[25deg] border-l-[9px] border-orange-500/80 bg-gradient-to-bl from-[#214362] via-[#10263e] to-transparent opacity-70 lg:block"/>
      <div className="relative z-10 flex min-w-0 items-center gap-3">
-       <div className="rounded-full border-2 border-orange-500/70 bg-orange-500/10 p-3 text-orange-400"><Building2 size={30}/></div>
+       <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-orange-500/70 bg-orange-500/10 p-2 text-orange-400">{brandLogo?<img src={brandLogo} alt="Logotipo da empresa" className="max-h-full max-w-full object-contain"/>:<Building2 size={30}/>}</div>
        <div>
          <p className="text-[11px] font-bold tracking-[.25em] text-orange-400">{company?.tradeName||company?.name||'ORÇAPRO'}</p>
          <h2 className="mt-1 text-xl font-black uppercase tracking-tight text-white sm:text-2xl">Cronograma de obras</h2>
