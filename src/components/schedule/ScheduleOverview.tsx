@@ -24,7 +24,6 @@ function physicalLine(data:ScheduleOverviewModel['months'],field:'planned'|'actu
  const coords=data.map((m,i)=>m[field]===null?null:{x:40+(i+.5)*(570/data.length),y:171-(m[field]||0)*1.44});
  return {points:coords.filter((c):c is {x:number;y:number}=>!!c),path:coords.filter((c):c is {x:number;y:number}=>!!c).map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')};
 }
-const FinanceEmpty=()=> <span className="text-xs text-slate-400">Sem dados associados</span>;
 export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPreparePDF})=>{
  const today=new Date();const date=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
  const model=scheduleOverviewModel(schedule,quote,date);
