@@ -179,6 +179,7 @@ export const ScheduleView:React.FC=()=>{
     {syncStatus==='error'&&<p className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200">Erro ao sincronizar. Não considere as mudanças salvas até resolver o aviso no topo do aplicativo.</p>}
     {!ready&&<div className={`${tile} p-5 text-sm text-slate-400`}>Carregando seus cronogramas...</div>}
     {ready&&<>
+    {current&&<ScheduleOverview schedule={current} quote={attached} company={company} onPreparePDF={()=>setPrintHtml(buildScheduleDocument(current,attached,company))}/>}
     <section id="orcapro-schedule-settings" className={`${tile} space-y-3 p-4`}><div className="flex items-center justify-between"><h2 className="text-sm font-semibold">Obra / cronograma</h2><span className="text-[10px] text-slate-500">{schedules.length} registrado(s)</span></div>
       {schedules.length>0?<select className={control} aria-label="Selecionar cronograma" value={current?.id||''} onChange={e=>setSelectedScheduleId(e.target.value)}>{schedules.map(p=><option key={p.id} value={p.id}>{p.title||'Sem título'} · {p.tasks?.length||0} etapa(s) {quotes.find(q=>q.id===p.quoteId)?.number||''}</option>)}</select>:<div className="rounded-xl border border-dashed border-white/15 p-5 text-center text-sm text-slate-400">Sem cronogramas cadastrados. Clique em <strong className="text-slate-200">Novo</strong> para começar.</div>}
       {current?.tasks.length===0 && schedules.some(p=>p.id!==current.id && p.tasks?.length>0) &&
@@ -273,7 +274,6 @@ export const ScheduleView:React.FC=()=>{
         </div>;
       })}
     </section>}
-    {current&&<ScheduleOverview schedule={current} quote={attached} company={company} onPreparePDF={()=>setPrintHtml(buildScheduleDocument(current,attached,company))}/>}
     {printHtml&&<section className={`${tile} space-y-2 p-3`}><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs text-orange-300">Cronograma pronto para impressão</strong><div className="flex items-center gap-3"><button className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white" onClick={()=>printableFrameRef.current?.contentWindow?.print()}>Imprimir / Salvar PDF</button><button className="text-xs text-slate-400" onClick={()=>setPrintHtml('')}>Fechar prévia</button></div></div><p className="text-[11px] text-slate-400">Use o botão de impressão e selecione “Salvar como PDF” no navegador. Dados são os que estão no cronograma atual, sem alterações no orçamento.</p><iframe ref={printableFrameRef} title="Prévia do cronograma para PDF" srcDoc={printHtml} className="h-[580px] w-full rounded-xl border border-white/10 bg-white" sandbox="allow-modals allow-same-origin"/></section>}
     {error&&<div role="alert" className="flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300"><AlertTriangle size={16}/>{error}</div>}
     {current&&report&&<>
