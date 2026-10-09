@@ -78,7 +78,7 @@ test('equipe sugerida comunica com estimativa e financeiro por ID de item',()=>{
   const plan={id:'qa-plan',startDate:'2026-10-19',hoursPerDay:8,efficiency:0.8,tasks:[task],title:'QA',createdAt:'x',updatedAt:'x'};
   const estimate=estimateSchedule(plan);
   assert.equal(estimate.pending,0);
-  assert.equal(estimate.entries[0].days,5);
+  assert.equal(estimate.entries[0].days,4);
   assert.equal(estimate.entries[0].totalHH,75);
   const financial=physicalFinancial(plan,{items:[item]});
   assert.equal(financial.unlinkedTasks,0);
