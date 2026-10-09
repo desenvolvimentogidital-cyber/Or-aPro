@@ -57,9 +57,10 @@ try{
  await page.goto(origin,{waitUntil:'domcontentloaded'});
  const nav=page.getByRole('navigation',{name:'Navegação desktop'});
  await nav.waitFor();
- await nav.getByRole('button',{name:'Cronograma SINAPI'}).click();
- await page.getByRole('button',{name:'Novo',exact:true}).click();
- await page.getByLabel('Vincular a um orçamento existente').selectOption(quote.id);
+ await nav.getByRole('button',{name:'Orçamentos'}).click();
+ await page.getByRole('button',{name:'Planejar obra'}).click();
+ await page.getByRole('heading',{name:'Cronograma de execução'}).waitFor();
+ assert.equal(await page.getByLabel('Vincular a um orçamento existente').inputValue(),quote.id);
  await page.locator('input[type=file][accept*=".xlsx"]').setInputFiles({
    name:'coeficientes-ficticios-qa.csv',mimeType:'text/csv',buffer:Buffer.from(csv,'utf8')
  });
