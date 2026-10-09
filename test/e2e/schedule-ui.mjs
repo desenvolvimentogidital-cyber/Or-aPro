@@ -30,6 +30,18 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   const nav=page.getByRole('navigation',{name:'Navegação desktop'});
   await nav.getByRole('button',{name:'Cronograma SINAPI'}).click();
+  const overview=page.getByRole('region',{name:'Painel executivo do cronograma'});
+  await overview.waitFor({timeout:12000});
+  await overview.getByText('Cronograma de obras').waitFor();
+  await overview.getByText('Resumo das etapas e percentuais').waitFor();
+  await overview.getByText('Gráfico de Gantt').waitFor();
+  await overview.getByText('Curva S').waitFor();
+  await overview.getByText('Não informado').first().waitFor();
+  await overview.getByRole('button',{name:'Gerar relatório PDF'}).click();
+  const preview=page.frameLocator('iframe[title="Prévia do cronograma para PDF"]');
+  await preview.getByText('CRONOGRAMA DE OBRAS').waitFor();
+  await preview.getByText('CURVA S').waitFor();
+  await page.screenshot({path:'artifacts/cronograma-dashboard.png',fullPage:true}).catch(()=>{});
   const gantt=page.getByRole('region',{name:'Cronograma Gantt com datas e dias úteis'});
   await gantt.waitFor({timeout:12000});
   await gantt.getByText('D1',{exact:true}).waitFor();
