@@ -162,6 +162,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // Restauracoes sao edicoes: manter a assinatura REMOTA anterior ate salvar.
+  // Caso contrario, o backup apareceria na tela mas seria perdido ao recarregar.
+  const applyRestoredSnapshot = (data: WorkspaceData) => {
+    const previousServerSignature = lastSavedSignatureRef.current;
+    applySnapshot(data);
+    lastSavedSignatureRef.current = previousServerSignature;
+  };
+
   // A new authenticated account starts with NO commercial data.
   useEffect(() => {
     if (!session) return;
@@ -242,15 +250,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 2000);
   };
   const importBackup = (value: unknown) => {
+    if (!ready || !session || syncStatus !== 'saved') throw new Error('Aguarde a sincronizacao concluir e salve uma copia antes de restaurar.');
     const content = value as { format?: string; data?: WorkspaceData };
     if (content?.format !== 'orcapro-backup-v1' || !content.data) throw new Error('Arquivo não é um backup OrçaPro válido.');
     const validated = validateWorkspaceBackup(content.data);
     if (containsOldExampleRecords(validated)) {
       throw new Error('Backup contém identificadores dos registros demonstrativos da versão antiga. Revise o arquivo e remova os dados fictícios antes de importar.');
     }
-    applySnapshot(validated);
+    applyRestoredSnapshot(validated);
   };
   const importLegacyData = () => {
+    if (!ready || !session || syncStatus !== 'saved') throw new Error('Aguarde a sincronizacao concluir antes de migrar dados antigos.');
     const read = (key: string, fallback: unknown) => {
       const data = localStorage.getItem(`orcapro_${key}`);
       return data ? JSON.parse(data) : fallback;
@@ -265,7 +275,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (containsOldExampleRecords({ quotes: legacyQuotes, clients: legacyClients, catalog: legacyCatalog, expenses: legacyExpenses, company: legacyCompany })) {
       throw new Error('Foram identificados registros demonstrativos da versão antiga. Para não misturar dados fictícios com dados reais, a migração automática foi bloqueada. Exporte e revise o backup antes de importar dados reais.');
     }
-    applySnapshot({
+    applyRestoredSnapshot({
       quotes: legacyQuotes, clients: legacyClients,
       catalog: legacyCatalog, expenses: legacyExpenses, company: legacyCompany,
       notifications: read('notifications', []) as AppNotification[],
