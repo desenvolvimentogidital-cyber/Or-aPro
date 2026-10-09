@@ -1,0 +1,37 @@
+name: OrçaPro Browser Smoke
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Dependencias da aplicacao
+        run: npm ci --no-audit --no-fund
+      - name: Playwright isolado para testes
+        run: npm install --no-save --package-lock=false playwright@1.56.1 --no-audit --no-fund
+      - name: Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Subir frontend com configuracao de TESTE (sem backend)
+        run: |
+          VITE_SUPABASE_URL=https://invalid.supabase.co \
+          VITE_SUPABASE_ANON_KEY=sb_publishable_test_browser_only \
+          npm run dev -- --host 127.0.0.1 > /tmp/orcapro-smoke.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/orcapro-smoke.log
+          exit 1
+      - name: Smoke UI mobile e desktop
+        run: node test/e2e/smoke.mjs
