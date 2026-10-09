@@ -12,7 +12,12 @@ import {
   Smartphone,
   Maximize2,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  CalendarDays,
+  HardHat,
+  Wallet,
+  BarChart3,
+  Settings
 } from 'lucide-react';
 import { DashboardView } from '../dashboard/DashboardView';
 import { ScheduleView } from '../schedule/ScheduleView';
@@ -108,7 +113,7 @@ export const AppLayout: React.FC = () => {
             style={{ backgroundColor: theme.primaryColor }}
           />
           <span className="font-bold text-white tracking-wide">{theme.brandName}</span>
-          <span className="text-[10px] text-slate-500 font-mono">v2.4</span>
+          <span className="text-[10px] text-slate-500 font-mono">v2.5</span>
         </div>
 
         <div className="flex items-center gap-1.5 bg-[#141822] p-1 rounded-xl border border-white/5">
@@ -144,15 +149,51 @@ export const AppLayout: React.FC = () => {
         className={`w-full transition-all duration-300 relative flex flex-col ${
           viewMode === 'mobile'
             ? 'max-w-[420px] min-h-[860px] sm:h-[880px] bg-[#0c0e14] sm:rounded-[42px] sm:border-[8px] sm:border-[#1e232e] sm:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden'
-            : 'max-w-6xl min-h-screen sm:min-h-[850px] bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden'
+            : 'max-w-6xl min-h-screen sm:min-h-[850px] bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]'
         }`}
       >
-        {/* Atalhos que aproveitam a largura de tela no modo fluido. */}
-        {viewMode==='responsive' && <nav aria-label="Navegação desktop" className="hidden lg:flex flex-wrap gap-2 border-b border-white/10 bg-[#141822] px-5 py-3">{([
-          ['dashboard','Visão geral'],['orcamentos','Orçamentos'],['cronograma','Cronograma SINAPI'],['obras','Obras'],['financeiro','Financeiro'],['clientes','Clientes'],['relatorios','Relatórios']
-        ] as const).map(([id,label])=><button key={id} onClick={()=>setActiveView(id)} className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${activeView===id?'bg-orange-600 text-white':'bg-white/5 text-slate-300 hover:bg-white/10'}`}>{label}</button>)}</nav>}
+        {/* Navegacao lateral apenas no desktop; o modo celular permanece intacto. */}
+        {viewMode === 'responsive' && (
+          <aside className="hidden lg:flex lg:col-start-1 lg:row-start-1 min-w-0 flex-col border-r border-white/10 bg-[#121721] p-4" aria-label="Barra lateral do OrçaPro">
+            <div className="border-b border-white/10 px-3 pb-5 pt-2">
+              <p className="text-xl font-black tracking-tight text-orange-400">◈ OrçaPro</p>
+              <p className="mt-1 text-xs text-slate-400">Área de trabalho</p>
+            </div>
+            <nav aria-label="Navegação desktop" className="mt-4 flex flex-1 flex-col gap-1">
+              {([
+                ['dashboard', 'Visão geral', Home],
+                ['orcamentos', 'Orçamentos', FileText],
+                ['novo-orcamento', 'Novo orçamento', Plus],
+                ['clientes', 'Clientes', Users],
+                ['cronograma', 'Cronograma SINAPI', CalendarDays],
+                ['obras', 'Obras', HardHat],
+                ['financeiro', 'Financeiro', Wallet],
+                ['formacao-preco', 'Formação de preço', BarChart3],
+                ['servicos', 'Serviços e catálogo', Sparkles],
+                ['relatorios', 'Relatórios', BarChart3],
+                ['empresa', 'Minha empresa', Settings],
+              ] as const).map(([id, label, Icon]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveView(id)}
+                  aria-current={activeView === id ? 'page' : undefined}
+                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-orange-400 ${
+                    activeView === id ? 'bg-orange-600/20 font-semibold text-orange-200 ring-1 ring-orange-500/30' : 'text-slate-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </nav>
+            <div className="border-t border-white/10 px-3 pt-4 text-xs text-slate-500">
+              <span>Ambiente conectado à sua conta</span>
+            </div>
+          </aside>
+        )}
         {/* Content View with smooth scroll */}
-        <div className="flex-1 overflow-y-auto px-4 pt-2 no-scrollbar relative">
+        <div className="flex-1 min-w-0 overflow-y-auto px-4 pt-2 no-scrollbar relative lg:col-start-2 lg:row-start-1 lg:px-7 lg:pt-5">
           {ready ? renderActiveView() : <div role="status" className="p-6 text-center text-sm text-slate-300">Carregando dados protegidos… Se o carregamento falhar, verifique a configuração do banco e faça login novamente.</div>}
         </div>
 
