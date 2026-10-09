@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { importSinapiFile } from '../../utils/sinapiFile';
 import {sinapiUFs, withSinapiProvenance, validCompetence, sinapiOriginLabel, type SinapiUF, type SinapiRegime} from '../../utils/sinapiRegional';
-import { estimateSchedule, validScheduleDate, workingDaysBetween, nextWorkday } from '../../utils/scheduleMath';
+import { estimateSchedule, validScheduleDate, scheduleWorkdayDates } from '../../utils/scheduleMath';
 import { physicalFinancial } from '../../utils/physicalFinancial';
 import { buildScheduleDocument } from '../../utils/scheduleDocument';
 import { addMeasurement, measuredQuantity, physicalProgress, progressPercent } from '../../utils/execution';
@@ -54,10 +54,16 @@ export const ScheduleView:React.FC=()=>{
   const [showImport,setShowImport]=useState(true);
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
+  const [ganttPage,setGanttPage]=useState(0);
   const fileRef=useRef<HTMLInputElement>(null);
   const printableFrameRef=useRef<HTMLIFrameElement>(null);
   const current=resolveScheduleSelection(schedules,selectedScheduleId);
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
+  // Um grupo de 15 dias úteis por vez: datas REAIS legíveis, mesmo em obras longas.
+  const timeline=useMemo(()=>current&&report?.finishDate?scheduleWorkdayDates(current.startDate,report.finishDate,current.holidays||[]):[],[current,report]);
+  const pageCount=Math.ceil(timeline.length/15);
+  const safeGanttPage=Math.min(ganttPage,Math.max(0,pageCount-1));
+  const ganttDates=timeline.slice(safeGanttPage*15,(safeGanttPage+1)*15);
   const attached=quotes.find(q=>q.id===current?.quoteId);
   const physical=current?physicalProgress(current):null;
   const physicalMoney=current?physicalFinancial(current,attached):null;
@@ -194,10 +200,29 @@ export const ScheduleView:React.FC=()=>{
         {!!physicalMoney?.unlinkedTasks&&<p className="text-[10px] text-slate-400">{physicalMoney.unlinkedTasks} etapa(s) sem vínculo financeiro; não foram incluídas no cálculo.</p>}
         {attached?.status!=='aprovado'&&<p className="text-[10px] text-amber-300">Proposta ainda não aprovada: valores são apenas planejamento, não contratação comprovada.</p>}
       </section>
-      <section className={`${tile} space-y-3 p-4`}><h2 className="flex items-center gap-2 text-sm font-bold"><BarChart3 size={17} style={{color:theme.primaryColor}}/> Gantt — planejado e executado</h2><p className="text-[11px] text-slate-400">Barras laranja: prazo previsto em dias úteis. Sobreposição verde: percentual físico medido sobre a barra prevista (não representa datas reais de execução). Em modo dependências, atividades independentes podem ocorrer em paralelo; sem nivelamento automático de equipes.</p>
-      {report.workingDays!==null? <div className="space-y-2">{report.entries.map((e,i)=>{const first=nextWorkday(current.startDate,current.holidays||[]);const previous=first&&e.start?Math.max(0,(workingDaysBetween(first,e.start,current.holidays||[])||1)-1):0;const total=Math.max(1,report.workingDays||1);return <div className="grid grid-cols-[74px_minmax(0,1fr)] items-center gap-2" key={e.task.id}><span className="truncate text-[10px] text-slate-400">{e.task.composition.code}</span><div className="relative h-6 rounded-md bg-white/5"><span title={`${e.days} dia(s) · ${e.start} a ${e.end}`} className="absolute top-0 flex h-6 items-center justify-center rounded-md text-[10px] font-semibold text-white" style={{left:`${previous/total*100}%`,width:`${Math.max(1,(e.days||1)/total*100)}%`,background:theme.primaryGradient}}>{(e.days||0)/total>0.08?e.days:''}</span><span className="absolute bottom-0 h-1.5 rounded bg-emerald-400" style={{left:`${previous/total*100}%`,width:`${(e.days||0)/total*(progressPercent(e.task)||0)}%`}}/></div></div>})}<p className="text-[10px] text-slate-500">Início: {current.startDate.split('-').reverse().join('/')} · Término previsto: {report.finishDate?.split('-').reverse().join('/')}. Exclui as datas não úteis informadas e considera dependências configuradas.</p></div> :<div className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-slate-400">Informe quantidade, equipes e parâmetros válidos de todas as etapas para exibir o gráfico.</div>}
+
+      <section className={`${tile} space-y-3 p-4`}>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-bold"><BarChart3 size={17} style={{color:theme.primaryColor}}/> Calendário da obra — dia a dia</h2><p className="mt-1 text-[11px] text-slate-400">Cada coluna identifica um <strong>dia útil com a data real</strong>. As faixas laranja mostram em quais dias cada serviço está previsto. Sábados, domingos e datas não úteis informadas são excluídos.</p></div>
+          {pageCount>1&&<div className="flex items-center gap-2 text-[11px]"><button type="button" disabled={safeGanttPage===0} onClick={()=>setGanttPage(p=>Math.max(0,p-1))} className="rounded-lg border border-white/15 px-3 py-2 text-slate-100 disabled:opacity-30">← Dias anteriores</button><span className="whitespace-nowrap text-slate-400">Bloco {safeGanttPage+1} de {pageCount}</span><button type="button" disabled={safeGanttPage===pageCount-1} onClick={()=>setGanttPage(p=>Math.min(pageCount-1,p+1))} className="rounded-lg border border-white/15 px-3 py-2 text-slate-100 disabled:opacity-30">Próximos dias →</button></div>}
+        </div>
+        {report.workingDays!==null && ganttDates.length>0 ? <>
+          <div className="rounded-xl border border-white/10 overflow-x-auto" role="region" aria-label="Cronograma Gantt com datas e dias úteis">
+            <div className="min-w-[820px]">
+              <div className="grid border-b border-white/10 bg-[#1e293b]" style={{gridTemplateColumns:`minmax(210px,240px) repeat(${ganttDates.length},minmax(38px,1fr))`}}>
+                <div className="sticky left-0 z-10 border-r border-white/10 bg-[#1e293b] px-3 py-2 text-[10px] font-semibold text-slate-100">Atividade · duração</div>
+                {ganttDates.map((day,i)=><div key={day} className="border-r border-white/10 px-0.5 py-1 text-center" title={`Dia útil ${safeGanttPage*15+i+1} · ${day.split('-').reverse().join('/')}`}><div className="text-[9px] font-bold text-orange-300">D{safeGanttPage*15+i+1}</div><div className="text-[10px] font-semibold text-white">{day.slice(8,10)}/{day.slice(5,7)}</div><div className="text-[9px] text-slate-400">{new Date(day+'T12:00:00Z').toLocaleDateString('pt-BR',{weekday:'short',timeZone:'UTC'}).replace('.','')}</div></div>)}
+              </div>
+              {report.entries.map((e,i)=><div key={e.task.id} className="grid border-b border-white/5 last:border-b-0" style={{gridTemplateColumns:`minmax(210px,240px) repeat(${ganttDates.length},minmax(38px,1fr))`}}>
+                <div className="sticky left-0 z-10 border-r border-white/10 bg-[#111b29] px-2 py-2"><div className="truncate text-[10px] font-semibold text-white" title={e.task.composition.description}>{i+1}. {e.task.composition.description}</div><div className="mt-1 text-[9px] text-slate-400">{e.task.composition.code} · {e.days===null?'Prazo pendente':`${e.days} dia(s) útil(eis)`}</div><div className="text-[9px] text-slate-500">{e.start?.split('-').reverse().join('/')||'Início pendente'} → {e.end?.split('-').reverse().join('/')||'Fim pendente'}</div></div>
+                {ganttDates.map(day=><div key={day} title={`${e.task.composition.code} · ${day.split('-').reverse().join('/')} · ${e.start&&e.end&&day>=e.start&&day<=e.end?'Execução prevista':'Sem execução prevista'}`} className={`min-h-[49px] border-r border-white/5 ${e.start&&e.end&&day>=e.start&&day<=e.end?'bg-orange-500/80':'bg-white/[0.025]'}`}></div>)}
+              </div>)}
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400">Exibindo de {ganttDates[0].split('-').reverse().join('/')} a {ganttDates[ganttDates.length-1].split('-').reverse().join('/')} · Período total previsto: {report.workingDays} dias úteis, de {timeline[0].split('-').reverse().join('/')} a {report.finishDate?.split('-').reverse().join('/')}. O PDF inclui os quadros de datas e duração de cada etapa.</p>
+          <p className="text-[10px] text-amber-300/90">A disponibilidade de profissionais compartilhados entre frentes paralelas não é distribuída automaticamente. Confira as equipes antes de prometer datas ao cliente. Medição realizada não equivale a execução em uma data específica do gráfico.</p>
+        </> : <div className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-slate-400">Informe quantidade, coeficientes e equipe por função em todas as etapas para calcular datas e exibir o calendário. Sem esses dados, nenhum prazo é inventado.</div>}
       </section>
-      <aside className="flex items-start gap-2 rounded-xl border border-white/10 bg-[#141822] p-3 text-[11px] leading-relaxed text-slate-400"><Info size={16} className="mt-0.5 shrink-0"/><span>O SINAPI fornece coeficientes referenciais de consumo de mão de obra por unidade, <strong className="text-slate-200">não um compromisso automático de duração</strong>. O prazo depende da equipe real, jornada, eficiência, condições da obra, feriados, logística, interferências e sequência executiva. Revise as composições e valide o cronograma tecnicamente antes de enviar ao cliente.</span></aside>
+      <aside className="flex items-start gap-2 rounded-xl border border-white/10 bg-[#141822] p-3 text-[11px] leading-relaxed text-slate-400"><Info size={16} className="mt-0.5 shrink-0"/><span>O SINAPI fornece coeficientes referenciais de consumo de mão de obra por unidade, <strong className="text-slate-200">não um compromisso automático de duração</strong>. Materiais, equipamentos, estoque e disponibilidade de recursos compartilhados entre serviços não são dimensionados automaticamente. O prazo depende da equipe real, jornada, eficiência, condições da obra, feriados, logística, interferências e sequência executiva. Revise as composições e valide o cronograma tecnicamente antes de enviar ao cliente.</span></aside>
     </>}
     </>}
   </div>;

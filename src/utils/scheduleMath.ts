@@ -49,6 +49,20 @@ export function workingDaysBetween(start: string, end: string, holidays: string[
   return count < 10000 ? count : null;
 }
 
+/** Datas EXATAS do eixo: somente dias úteis, respeitando feriados declarados.
+ * Usado pelo Gantt em tela e no PDF, evitando escalas fictícias como "S1/S2". */
+export function scheduleWorkdayDates(start: string, end: string, holidays: string[] = []): string[] {
+  if (!validScheduleDate(start) || !validScheduleDate(end) || start > end ||
+      holidays.length > 366 || !holidays.every(validScheduleDate)) return [];
+  const blocked = holidaysOf(holidays);
+  const dates: string[] = [];
+  for (const day = parse(start); key(day) <= end && dates.length < 10000; day.setUTCDate(day.getUTCDate() + 1)) {
+    const value = key(day);
+    if (day.getUTCDay() !== 0 && day.getUTCDay() !== 6 && !blocked.has(value)) dates.push(value);
+  }
+  return dates;
+}
+
 export function estimateSchedule(plan: WorkSchedule): ScheduleEstimate {
   const holidays = plan.holidays || [];
   const validCalendar = holidays.length <= 366 && holidays.every(validScheduleDate);
