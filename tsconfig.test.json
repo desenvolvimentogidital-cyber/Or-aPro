@@ -16,6 +16,7 @@
     "src/types/index.ts",
     "src/types/workspace.ts",
     "src/utils/backupValidation.ts",
+    "src/utils/workspaceSync.ts",
     "src/utils/sinapiRegional.ts",
     "src/utils/sinapiCosts.ts",
     "src/utils/sinapiFile.ts",
