@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { withSinapiProvenance, sinapiOriginLabel, validCompetence, validateProvenance } from '../.test-dist/utils/sinapiRegional.js';
+import { validateWorkspaceBackup } from '../.test-dist/utils/backupValidation.js';
+const sample={code:'104658',description:'Piso podotátil',unit:'M2',labor:[{code:'88316',role:'SERVENTE',hoursPerUnit:1.279}],reference:'08/2026',sourceFile:'SINAPI Referência',sourceSheet:'Analítico'};
+const data=()=>({quotes:[],clients:[],catalog:[],expenses:[],notifications:[],company:{name:''},lastQuoteNumber:0,schedules:[],financeEntries:[]});
+test('competências mensais só aceitam mês real no padrão MM/AAAA',()=>{assert.equal(validCompetence('08/2026'),true);assert.equal(validCompetence('13/2026'),false);assert.equal(validCompetence('08/26'),false);});
+test('proveniência explícita da UF e regime sem alterar os coeficientes importados',()=>{const copy=withSinapiProvenance(sample,{uf:'SP',reference:'08/2026',regime:'sem_desoneracao'});assert.match(sinapiOriginLabel(copy),/08\/2026 · SP · sem desoneração/);copy.labor[0].hoursPerUnit=90;assert.equal(sample.labor[0].hoursPerUnit,1.279);});
+test('bloqueia competência diferente da planilha',()=>assert.throws(()=>withSinapiProvenance(sample,{uf:'SP',reference:'09/2026',regime:'sem_desoneracao'}),/não é permitido/));
+test('UF inválida não passa',()=>assert.throws(()=>validateProvenance({uf:'XX',reference:'08/2026',regime:'com_desoneracao'}),/UF/));
+test('backup válido sem novas listas opcionais preserva compatibilidade',()=>{const d=data();delete d.schedules;delete d.financeEntries;assert.equal(validateWorkspaceBackup(d),d);});
+test('backup não pode conter nomes/IDs duplicados em listas',()=>{const d=data();d.clients=[{id:'x'},{id:'x'}];assert.throws(()=>validateWorkspaceBackup(d),/duplicados/);});
+test('backup não aceita custos/valores financeiros negativos',()=>{const d=data();d.catalog=[{id:'a',name:'Item',price:3,cost:-5}];assert.throws(()=>validateWorkspaceBackup(d),/catálogo/);});
+test('backup não aceita registros sem nome/estrutura',()=>{const d=data();d.quotes=[{id:'q',number:'#1',clientId:'c',total:5,items:'errado'}];assert.throws(()=>validateWorkspaceBackup(d),/Orçamento inválido/);});
+test('backup valida etapas e equipes ao restaurar',()=>{const d=data();d.schedules=[{id:'s',title:'Obra',tasks:[{id:'t',quantity:10,composition:{labor:[]}}]}];assert.throws(()=>validateWorkspaceBackup(d),/Etapas/);});
+test('backup rejeita entrada financeira impossível',()=>{const d=data();d.financeEntries=[{id:'a',type:'recebimento',amount:-100}];assert.throws(()=>validateWorkspaceBackup(d),/financeiros/);});

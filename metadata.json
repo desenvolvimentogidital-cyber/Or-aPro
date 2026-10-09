@@ -1,0 +1,6 @@
+{
+  "name": "OrçaPro - Gestão e Orçamentos",
+  "description": "Sistema completo e profissional de criação de orçamentos, formação de preços, catálogo de serviços e materiais com identidade visual personalizável.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
