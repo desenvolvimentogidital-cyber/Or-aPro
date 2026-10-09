@@ -1,0 +1,60 @@
+name: OrçaPro QA — Autenticado no Supabase Real
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orcapro-qa-autenticado
+  cancel-in-progress: false
+
+jobs:
+  auth-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QA_SUPABASE_URL: ${{ secrets.QA_SUPABASE_URL }}
+      QA_ANON_KEY: ${{ secrets.QA_ANON_KEY }}
+      QA_EMAIL: ${{ secrets.QA_EMAIL }}
+      QA_PASSWORD: ${{ secrets.QA_PASSWORD }}
+      E2E_BASE_URL: http://127.0.0.1:3000/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validar ambiente e segredos sem exibir seus valores
+        shell: bash
+        run: |
+          if [ "$QA_SUPABASE_URL" != "https://obokqubntggrgqqmflhx.supabase.co" ]; then
+            echo "::error::O projeto Supabase nao e o QA exclusivo. Execucao bloqueada."
+            exit 1
+          fi
+          for secret in QA_ANON_KEY QA_EMAIL QA_PASSWORD; do
+            if [ -z "${!secret}" ]; then
+              echo "::error::Segredo ${secret} nao configurado no repositório."
+              exit 1
+            fi
+          done
+      - name: Instalar dependencias
+        run: npm ci --no-audit --no-fund
+      - name: Instalar Playwright isoladamente
+        run: npm install --no-save --package-lock=false playwright@1.56.1 --no-audit --no-fund
+      - name: Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Subir app apontando SOMENTE para o banco de homologacao
+        shell: bash
+        run: |
+          VITE_SUPABASE_URL="$QA_SUPABASE_URL" VITE_SUPABASE_ANON_KEY="$QA_ANON_KEY" \
+          npm run dev -- --host 127.0.0.1 > /tmp/orcapro-auth-e2e.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::Servidor local nao iniciou."
+          exit 1
+      - name: Login, persistencia, backup e limpeza da conta QA
+        run: node test/e2e/supabase-real-authenticated.mjs
