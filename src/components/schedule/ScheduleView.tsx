@@ -12,6 +12,7 @@ import { resolveScheduleSelection } from '../../utils/scheduleSelection';
 import { decimalFromInput, mergeSinapiReports } from '../../utils/sinapi';
 import type { SinapiComposition, WorkSchedule, ScheduleTask } from '../../types/schedule';
 import { newId } from '../../utils/quoteMath';
+import { findQuoteSinapiCandidates, sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -48,6 +49,10 @@ export const ScheduleView:React.FC=()=>{
   const [selectedComposition,setSelectedComposition]=useState('');
   const [quantity,setQuantity]=useState('');
   const [selectedQuoteItem,setSelectedQuoteItem]=useState('');
+  const [activeQuoteItem,setActiveQuoteItem]=useState('');
+  const [quoteSearch,setQuoteSearch]=useState<Record<string,string>>({});
+  const [quoteComposition,setQuoteComposition]=useState<Record<string,string>>({});
+  const [quoteTargetDays,setQuoteTargetDays]=useState<Record<string,string>>({});
   const [measurementInput,setMeasurementInput]=useState<Record<string,string>>({});
   const [measurementDate,setMeasurementDate]=useState<Record<string,string>>({});
   const [measurementNote,setMeasurementNote]=useState<Record<string,string>>({});
@@ -113,8 +118,45 @@ export const ScheduleView:React.FC=()=>{
     let composition: SinapiComposition;
     try {composition=withSinapiProvenance(selected,{reference:reference.trim(),uf:regionalUF,regime:regionalRegime});}
     catch(err){setError(err instanceof Error?err.message:'Referência regional inválida.');return;}
-    const task:ScheduleTask={id:newId('etapa'),composition,quantity:q,crew:{},dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]};
+    const linkedItem = selectedQuoteItem ? attached?.items.find(x=>x.id===selectedQuoteItem) : undefined;
+    if (selectedQuoteItem && (!linkedItem || !sameServiceUnit(linkedItem.unit,composition.unit) || Math.abs(linkedItem.quantity-q)>0.000001)){
+      setError('O item associado precisa ter a mesma unidade e quantidade da composição.');return;
+    }
+    if (linkedItem && current.tasks.some(t=>t.quoteItemId===linkedItem.id)){
+      setError('Este item do orçamento já está associado a outra etapa.');return;
+    }
+    const task:ScheduleTask={id:newId('etapa'),composition,quantity:q,crew:{},quoteItemId:linkedItem?.id,dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]};
     change({tasks:[...current.tasks,task]});setError('');setQuantity('');setSelectedQuoteItem('');
+  };
+  const appendFromQuote=(quoteItemId:string)=>{
+    if(!current || !attached){setError('Vincule um orçamento para importar os serviços.');return;}
+    const item=attached.items.find(i=>i.id===quoteItemId);
+    if(!item){setError('Item do orçamento não encontrado.');return;}
+    if(current.tasks.length>=180){setError('Limite de 180 etapas atingido. Divida a obra por cronograma.');return;}
+    if(current.tasks.some(t=>t.quoteItemId===item.id)){setError('Este item já está vinculado ao cronograma.');return;}
+    const key=quoteComposition[item.id]||'';
+    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key);
+    if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
+      setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
+    }
+    if(!regionalUF || !regionalRegime || !validCompetence(reference.trim())){
+      setError('Antes de gerar as etapas informe competência, UF e encargos da planilha SINAPI.');return;
+    }
+    const input=(quoteTargetDays[item.id]||'').trim();
+    const days=input===''?undefined:Number(input);
+    let composition:SinapiComposition;
+    let simulated:ReturnType<typeof simulateCrewForQuote>;
+    try{
+      composition=withSinapiProvenance(chosen,{reference:reference.trim(),uf:regionalUF,regime:regionalRegime});
+      simulated=simulateCrewForQuote(composition,item.quantity,current.hoursPerDay,current.efficiency,days);
+    }catch(err){setError(err instanceof Error?err.message:'Não foi possível dimensionar a equipe.');return;}
+    const newTask:ScheduleTask={
+      id:newId('etapa'),composition,quantity:item.quantity,crew:simulated.crew,quoteItemId:item.id,
+      dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]
+    };
+    change({tasks:[...current.tasks,newTask]});
+    setActiveQuoteItem('');setError('');
+    setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
   };
   const changeTask=(task:ScheduleTask)=>change({tasks:current!.tasks.map(t=>t.id===task.id?task:t)});
   const recordMeasurement=(task:ScheduleTask)=>{
@@ -172,6 +214,64 @@ export const ScheduleView:React.FC=()=>{
       </div>}</>}
       </>}
     </section>
+    {attached && current && <section className={`${tile} space-y-3 p-4`}>
+      <div>
+        <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
+        <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
+      </div>
+      {!imported.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima. Sem coeficientes reais de mão de obra não é possível sugerir equipe nem duração.</p>}
+      {attached.items.length===0 && <p className="text-xs text-slate-400">O orçamento vinculado ainda não possui itens de serviço.</p>}
+      {attached.items.map(item=>{
+        const already=current.tasks.find(t=>t.quoteItemId===item.id);
+        const expanded=activeQuoteItem===item.id;
+        const query=quoteSearch[item.id]||'';
+        const matches=expanded?findQuoteSinapiCandidates(item,imported,query,20):[];
+        const selectedKey=quoteComposition[item.id]||'';
+        const chosen=imported.find(c=>`${c.code}|${c.unit}`===selectedKey);
+        if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
+        const targetInput=(quoteTargetDays[item.id]||'').trim();
+        const targetDays=targetInput?Number(targetInput):undefined;
+        let simulation:ReturnType<typeof simulateCrewForQuote>|null=null;
+        let simulationError='';
+        if(chosen)try{simulation=simulateCrewForQuote(chosen,item.quantity,current.hoursPerDay,current.efficiency,targetDays);}
+          catch(e){simulationError=e instanceof Error?e.message:'Equipe ou prazo inválido.';}
+        return <div key={item.id} className="rounded-xl border border-white/10 bg-[#0b0e15] p-3">
+          <button type="button" className="flex w-full items-center justify-between gap-3 text-left" onClick={()=>setActiveQuoteItem(expanded?'':item.id)}>
+            <span className="min-w-0"><strong className="block truncate text-xs text-white">{item.name}</strong><span className="mt-1 block text-[11px] text-slate-400">{fmt(item.quantity,2)} {item.unit} · {already?'Etapa já vinculada': 'Aguardando composição SINAPI'}</span></span>
+            <span className={`shrink-0 text-[11px] ${already?'text-emerald-300':'text-orange-300'}`}>{already?'Vinculado ✓':expanded?'Fechar':'Configurar →'}</span>
+          </button>
+          {expanded && !already && <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+            <label className="block text-[11px] text-slate-400">Buscar composição por nome ou código SINAPI
+              <input className={`${control} mt-1`} value={query} onChange={e=>setQuoteSearch(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: alvenaria, drywall, porcelanato, pintura ou código"/>
+            </label>
+            <label className="block text-[11px] text-slate-400">Confirme a composição adequada — apenas unidade {item.unit}
+              <select className={`${control} mt-1`} value={selectedKey} onChange={e=>setQuoteComposition(old=>({...old,[item.id]:e.target.value}))}>
+                <option value="">Selecione uma composição SINAPI</option>
+                {matches.map(c=><option key={`${c.code}|${c.unit}`} value={`${c.code}|${c.unit}`}>{c.code} · {c.description.slice(0,110)}</option>)}
+              </select>
+            </label>
+            {!matches.length && imported.length>0 && <p className="text-[11px] text-amber-200">Nenhuma correspondência encontrada. Pesquise pelo código ou por termos da descrição oficial; não será usada uma composição inventada.</p>}
+            {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
+              <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
+              <p className="text-[11px] text-slate-300">{chosen.description}</p>
+              <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet}</p>
+              {chosen.labor.map(l=><p key={`${l.code}:${l.role}`} className="text-[11px] text-slate-300">{l.role}: <strong>{fmt(l.hoursPerUnit,5)} HH/{chosen.unit}</strong> × {fmt(item.quantity,2)} {item.unit} = {fmt(l.hoursPerUnit*item.quantity,2)} HH</p>)}
+              <label className="block text-[11px] text-slate-400">Prazo desejado em dias úteis (opcional; deixe vazio para simular 1 pessoa por profissão)
+                <input className={`${control} mt-1`} type="number" min="1" max="10000" step="1" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
+              </label>
+              {simulation && <div className="rounded-lg bg-white/5 p-2">
+                <p className="text-[11px] font-semibold text-slate-200">Equipe simulada: {simulation.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}</p>
+                <p className="mt-1 text-[11px] text-slate-300">{fmt(simulation.totalHH,2)} HH · <strong>{simulation.projectedDays} dia(s) úteis de execução</strong> com {fmt(current.hoursPerDay,1)} h/dia e {fmt(current.efficiency*100,0)}% de eficiência.</p>
+              </div>}
+              {simulationError&&<p role="alert" className="text-xs text-rose-300">{simulationError}</p>}
+              <button type="button" disabled={!simulation} onClick={()=>appendFromQuote(item.id)} className="w-full rounded-xl bg-orange-600 px-3 py-3 text-xs font-semibold text-white disabled:opacity-40">Adicionar etapa com equipe simulada</button>
+              <p className="text-[10px] text-amber-200">A simulação não comprova disponibilidade de profissionais, materiais ou equipamentos. Em serviços paralelos, ajuste equipes compartilhadas e dependências. Revise prazo e execução antes de enviar ao cliente.</p>
+            </div>}
+          </div>}
+          {expanded && already && <p className="mt-2 text-[11px] text-emerald-300">Este item já está ligado à composição {already.composition.code}. A equipe pode ser ajustada na etapa abaixo.</p>}
+        </div>;
+      })}
+    </section>}
     {printHtml&&<section className={`${tile} space-y-2 p-3`}><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs text-orange-300">Cronograma pronto para impressão</strong><div className="flex items-center gap-3"><button className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white" onClick={()=>printableFrameRef.current?.contentWindow?.print()}>Imprimir / Salvar PDF</button><button className="text-xs text-slate-400" onClick={()=>setPrintHtml('')}>Fechar prévia</button></div></div><p className="text-[11px] text-slate-400">Use o botão de impressão e selecione “Salvar como PDF” no navegador. Dados são os que estão no cronograma atual, sem alterações no orçamento.</p><iframe ref={printableFrameRef} title="Prévia do cronograma para PDF" srcDoc={printHtml} className="h-[580px] w-full rounded-xl border border-white/10 bg-white" sandbox="allow-modals allow-same-origin"/></section>}
     {error&&<div role="alert" className="flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300"><AlertTriangle size={16}/>{error}</div>}
     {current&&report&&<>
