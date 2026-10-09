@@ -2,6 +2,7 @@ import type {WorkSchedule} from '../types/schedule';
 import type {Quote,CompanySettings} from '../types/index';
 import {scheduleOverviewModel,shortDate} from './scheduleOverview.js';
 import type {ScheduleOverviewModel,OverviewStage} from './scheduleOverview.js';
+import {safeImageSrc} from './quoteDocument.js';
 
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]||ch));
 const pct=(v:number|null)=>v===null?'—':v.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';
@@ -38,8 +39,10 @@ export function buildScheduleDashboardCover(schedule:WorkSchedule,quote?:Quote,c
  const curveSvg=months.length?'<svg viewBox="0 0 450 135" aria-label="Curva S de progresso" role="img">'+ticks+ticklabels+(planned?'<polyline fill="none" stroke="#ff901b" stroke-width="2.5" points="'+planned+'"/>':'')+(actual?'<polyline fill="none" stroke="#ffe09e" stroke-width="2" stroke-dasharray="5 3" points="'+actual+'"/>':'')+'</svg>':'<p class="oc-muted">Aguardando cálculo das datas das etapas.</p>';
  const longest=data.longest.map(s=>'<tr><td>'+esc(s.description)+'</td><td>'+shortDate(s.end)+'</td><td>'+s.duration+'</td></tr>').join('')||'<tr><td colspan="3">Sem durações calculadas.</td></tr>';
  const branding=esc(company?.tradeName||company?.name||'ORÇAPRO');
+ const logo=safeImageSrc(company?.logoUrl);
+ const logoHtml=logo?'<img src="'+esc(logo)+'" alt="Logotipo da empresa" style="max-width:33px;max-height:32px;object-fit:contain"/>':'▥';
  const html='<div id="oc-report-cover">'+
- '<div class="oc-hero"><div class="oc-brand"><div class="oc-mark">▥</div><div><b>'+branding+'</b><small>PLANEJAMENTO DE OBRAS</small></div></div>'+
+ '<div class="oc-hero"><div class="oc-brand"><div class="oc-mark">'+logoHtml+'</div><div><b>'+branding+'</b><small>PLANEJAMENTO DE OBRAS</small></div></div>'+
  '<div class="oc-hero-title"><h1>CRONOGRAMA DE OBRAS</h1><p>PLANEJAMENTO <em>●</em> EXECUÇÃO <em>●</em> CONTROLE</p><small>Dados do cronograma e medições registradas no OrçaPro</small></div>'+
  '<div class="oc-hero-info"><div><b>OBRA:</b><span>'+esc(schedule.title)+'</span></div><div><b>LOCAL:</b><span>'+esc(schedule.siteAddress||'Não informado')+'</span></div><div><b>INÍCIO PREVISTO:</b><span>'+shortDate(data.start)+'</span></div><div><b>TÉRMINO:</b><span>'+shortDate(data.end)+'</span></div><div><b>DURAÇÃO:</b><span>'+(data.duration===null?'A definir':data.duration+' dias úteis')+'</span></div></div></div>'+
  '<div class="oc-layout-top"><section class="oc-panel"><h2>◉ RESUMO DAS ETAPAS E PERCENTUAIS</h2><table><thead><tr><th>ETAPA REAL DA OBRA</th><th>% HH</th></tr></thead><tbody>'+shareRows+'</tbody></table><div class="oc-panel-total">TOTAL <b>'+n(data.totalHH)+' HH</b></div></section>'+
