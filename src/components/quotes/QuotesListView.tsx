@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
-import { Search, Plus, Filter, FileText, ChevronRight, CheckCircle2, Clock, Send, XCircle, Copy, Trash2, Eye } from 'lucide-react';
+import { Search, Plus, Filter, FileText, ChevronRight, CheckCircle2, Clock, Send, XCircle, Copy, Trash2, Eye, CalendarDays } from 'lucide-react';
 import { formatCurrency, formatDate, getStatusBadge } from '../../utils/formatters';
 import { Quote, QuoteStatus } from '../../types';
+import type { WorkSchedule } from '../../types/schedule';
+import { newId } from '../../utils/quoteMath';
 
 export const QuotesListView: React.FC = () => {
   const {
@@ -13,6 +15,7 @@ export const QuotesListView: React.FC = () => {
     changeQuoteStatus,
     duplicateQuote,
     deleteQuote,
+    schedules,addSchedule,setSelectedScheduleId,
     quoteStatusFilter,
     setQuoteStatusFilter
   } = useApp();
@@ -20,6 +23,22 @@ export const QuotesListView: React.FC = () => {
   const { theme } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [actionMenuQuoteId, setActionMenuQuoteId] = useState<string | null>(null);
+
+  const planQuote=(quote:Quote)=>{
+    const existing=schedules.find(s=>s.quoteId===quote.id);
+    if(existing) setSelectedScheduleId(existing.id);
+    else {
+      const now=new Date();
+      const local=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+      const schedule:WorkSchedule={
+        id:newId('cron'),title:`Cronograma — orçamento ${quote.number} — ${quote.clientName}`,
+        quoteId:quote.id,startDate:local,hoursPerDay:8,efficiency:1,tasks:[],
+        createdAt:now.toISOString(),updatedAt:now.toISOString()
+      };
+      addSchedule(schedule);setSelectedScheduleId(schedule.id);
+    }
+    setActiveView('cronograma');
+  };
 
   // Tabs count
   const allCount = quotes.length;
@@ -210,6 +229,16 @@ export const QuotesListView: React.FC = () => {
                     >
                       <Eye className="w-3 h-3" />
                       Visualizar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => planQuote(quote)}
+                      disabled={!quote.items.length}
+                      title={quote.items.length?'Abrir ou criar cronograma vinculado a este orçamento':'Adicione itens antes de planejar'}
+                      className="px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-200 hover:bg-orange-500/20 disabled:opacity-40 flex items-center gap-1 text-[11px]"
+                    >
+                      <CalendarDays className="w-3 h-3" />
+                      Planejar obra
                     </button>
                     <button
                       onClick={() => duplicateQuote(quote.id)}
