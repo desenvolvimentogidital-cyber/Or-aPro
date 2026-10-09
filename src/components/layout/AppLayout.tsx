@@ -96,9 +96,9 @@ export const AppLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#07090d] text-slate-100 flex flex-col items-center justify-start p-0 sm:py-6 sm:px-4 font-sans select-none antialiased">
+    <div className="h-[100dvh] min-h-0 overflow-hidden md:h-auto md:min-h-screen md:overflow-visible bg-[#07090d] text-slate-100 flex flex-col items-center justify-start p-0 md:py-6 md:px-4 font-sans select-none antialiased">
       {/* Operational status visible in both mobile and desktop. */}
-      <div className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} px-3 py-2 flex items-center justify-between gap-2 text-[11px] border-b border-white/10 bg-[#141822] sm:rounded-xl sm:mb-2`}>
+      <div className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} shrink-0 px-3 py-2 flex items-center justify-between gap-2 text-[11px] border-b border-white/10 bg-[#141822] md:rounded-xl md:mb-2`}>
         <span className={syncStatus === 'error' ? 'text-rose-400' : syncStatus === 'saving' ? 'text-amber-300' : 'text-emerald-300'} role="status">
           {syncStatus === 'error' ? '⚠ Erro de sincronização' : !ready ? '☁ Conectando à conta…' : syncStatus === 'saving' ? '☁ Salvando na nuvem…' : '☁ Dados na nuvem'}
         </span>
@@ -107,7 +107,7 @@ export const AppLayout: React.FC = () => {
       {!ready && syncStatus === 'error' && <div role="alert" className="text-rose-200 text-xs px-3 py-2 w-full max-w-6xl">Falha ao carregar dados protegidos. <button className="underline" onClick={() => window.location.reload()}>Recarregar conexão</button></div>}
       {syncError && <div role="alert" className="text-rose-200 text-xs px-3 py-2 bg-rose-950/90 w-full max-w-6xl">{syncError}. Exporte um backup antes de fechar. {ready && <button className="underline ml-2" onClick={() => { void retrySync(); }}>Tentar novamente</button>}</div>}
       {/* Top Device Switcher Toolbar (for desktop preview testing) */}
-      <header className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} hidden sm:flex items-center justify-between mb-3 px-2 text-xs`}>
+      <header className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} hidden md:flex items-center justify-between mb-3 px-2 text-xs`}>
         <div className="flex items-center gap-2">
           <span
             className="w-2.5 h-2.5 rounded-full"
@@ -149,7 +149,7 @@ export const AppLayout: React.FC = () => {
       <main
         className={`w-full transition-all duration-300 relative flex flex-col ${
           viewMode === 'mobile'
-            ? 'max-w-[420px] min-h-[860px] sm:h-[880px] bg-[#0c0e14] sm:rounded-[42px] sm:border-[8px] sm:border-[#1e232e] sm:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden'
+            ? 'orcapro-mobile-shell flex-1 min-h-0 bg-[#0c0e14] overflow-hidden'
             : `${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} min-h-screen sm:min-h-[850px] bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]`
         }`}
       >
@@ -194,7 +194,7 @@ export const AppLayout: React.FC = () => {
           </aside>
         )}
         {/* Content View with smooth scroll */}
-        <div className="flex-1 min-w-0 overflow-y-auto px-4 pt-2 no-scrollbar relative lg:col-start-2 lg:row-start-1 lg:px-7 lg:pt-5">
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-contain px-3 pt-2 no-scrollbar relative sm:px-4 lg:col-start-2 lg:row-start-1 lg:px-7 lg:pt-5">
           {ready ? renderActiveView() : <div role="status" className="p-6 text-center text-sm text-slate-300">Carregando dados protegidos… Se o carregamento falhar, verifique a configuração do banco e faça login novamente.</div>}
         </div>
 
@@ -257,6 +257,19 @@ export const AppLayout: React.FC = () => {
           >
             <FileText className="w-5 h-5 stroke-[2.2]" />
             <span className="text-[10px] tracking-tight">Orçamentos</span>
+          </button>
+
+          {/* Acesso rápido ao cronograma no aplicativo mobile, sem retirar módulos existentes. */}
+          <button
+            type="button"
+            onClick={() => setActiveView('cronograma')}
+            aria-current={activeView === 'cronograma' ? 'page' : undefined}
+            className={`flex flex-col items-center gap-1 py-1 px-1 rounded-xl transition-all ${activeView === 'cronograma' ? 'font-bold' : 'text-slate-500 hover:text-slate-300'}`}
+            style={activeView === 'cronograma' ? { color: theme.primaryColor } : {}}
+            title="Abrir cronograma de obras"
+          >
+            <CalendarDays className="w-5 h-5 stroke-[2.2]" />
+            <span className="text-[10px] tracking-tight">Cronograma</span>
           </button>
 
           {/* 5. Mais / Menu */}

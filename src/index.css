@@ -32,3 +32,16 @@ body {
 :where(button,a,input,select,textarea,[tabindex]):focus-visible {outline:2px solid #fb923c;outline-offset:2px;}
 @media (prefers-reduced-motion: reduce) {*,*::before,*::after {scroll-behavior:auto!important;animation-duration:0.01ms!important;transition-duration:0.01ms!important;}}
 @media (min-width: 1024px) {body {min-width:320px;}}
+
+/* Dispositivo real (<768px) usa toda a tela.
+   A moldura de 420px existe SOMENTE na prévia manual feita em desktop. */
+@media (min-width: 768px) {
+  .orcapro-mobile-shell {
+    flex: none;
+    max-width: 420px;
+    height: 880px;
+    border: 8px solid #1e232e;
+    border-radius: 42px;
+    box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9);
+  }
+}

@@ -10,6 +10,7 @@ import type { WorkSchedule } from '../types/schedule';
 import type { FinanceEntry } from '../types/finance';
 import { validateEntry } from '../utils/financeMetrics';
 import { workspaceSignature, needsWorkspaceSave } from '../utils/workspaceSync';
+import {modeForViewport, LAYOUT_BREAKPOINT} from '../utils/viewMode';
 
 export type AppView = 
   | 'dashboard'
@@ -133,7 +134,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'mobile' | 'responsive'>(()=>typeof window !== 'undefined' && window.innerWidth>=768?'responsive':'mobile');
+  const [viewMode, setViewMode] = useState<'mobile' | 'responsive'>(() =>
+    typeof window === 'undefined' ? 'responsive' : modeForViewport(window.innerWidth)
+  );
+  // Seleciona automaticamente o modo ao abrir e ao cruzar o breakpoint.
+  // A opção "Celular/Fluido" na barra desktop continua funcional para pré-visualização:
+  // uma escolha manual não é desfeita por pequenas mudanças de largura.
+  useEffect(() => {
+    const query = window.matchMedia(`(min-width: ${LAYOUT_BREAKPOINT}px)`);
+    const applyDeviceLayout = () => setViewMode(modeForViewport(window.innerWidth));
+    applyDeviceLayout();
+    query.addEventListener('change', applyDeviceLayout);
+    return () => query.removeEventListener('change', applyDeviceLayout);
+  }, []);
 
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
 
