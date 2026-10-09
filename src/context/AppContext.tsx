@@ -133,7 +133,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'mobile' | 'responsive'>(()=>typeof window !== 'undefined' && window.innerWidth>=1024?'responsive':'mobile');
+  const [viewMode, setViewMode] = useState<'mobile' | 'responsive'>(()=>typeof window !== 'undefined' && window.innerWidth>=768?'responsive':'mobile');
 
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
 
