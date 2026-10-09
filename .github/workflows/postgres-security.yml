@@ -1,0 +1,42 @@
+name: OrçaPro PostgreSQL Security Contract
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: orcapro_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orcapro_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: orcapro_ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar cliente PostgreSQL
+        run: command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+      - name: Preparar roles Supabase somente neste banco efemero
+        run: psql -v ON_ERROR_STOP=1 -f test/sql/ci-bootstrap.sql
+      - name: Aplicar SQL versionado da aplicacao
+        run: psql -v ON_ERROR_STOP=1 -f supabase/schema.sql
+      - name: Testar RLS e RPC de propostas
+        run: psql -v ON_ERROR_STOP=1 -f test/sql/security-contract.sql
