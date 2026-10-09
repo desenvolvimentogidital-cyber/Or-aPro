@@ -49,7 +49,7 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
        <span className="font-semibold text-slate-400">TÉRMINO PREVISTO</span><span>{shortDate(model.end)}</span>
        <span className="font-semibold text-slate-400">DURAÇÃO TOTAL</span><span>{model.duration===null?'A definir':`${model.duration} dias úteis`}</span>
      </div>
-     <button type="button" onClick={onPreparePDF} disabled={!summary.length} className="relative z-10 flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-orange-900/30 hover:bg-orange-500 disabled:opacity-40"><Download size={15}/> Gerar relatório PDF</button>
+     <div className="relative z-10 flex flex-wrap items-center gap-2"><a href="#orcapro-schedule-settings" className="rounded-lg border border-[#42647c] bg-[#122b3e] px-3 py-2.5 text-xs font-semibold text-slate-100 hover:bg-[#1b3a50]">Editar planejamento</a><button type="button" onClick={onPreparePDF} disabled={!summary.length} className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-orange-900/30 hover:bg-orange-500 disabled:opacity-40"><Download size={15}/> Gerar relatório PDF</button></div>
    </div>
 
    <div className="grid gap-2 xl:grid-cols-12">
