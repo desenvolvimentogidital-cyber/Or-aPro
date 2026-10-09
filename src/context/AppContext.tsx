@@ -9,6 +9,7 @@ import { emptyCompany } from '../data/defaults';
 import type { WorkSchedule } from '../types/schedule';
 import type { FinanceEntry } from '../types/finance';
 import { validateEntry } from '../utils/financeMetrics';
+import { workspaceSignature, needsWorkspaceSave } from '../utils/workspaceSync';
 
 export type AppView = 
   | 'dashboard'
@@ -111,6 +112,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const saveBusyRef = useRef(false);
   const latestRef = useRef<WorkspaceData | null>(null);
   const numberRef = useRef(0);
+  const lastSavedSignatureRef = useRef<string | null>(null);
 
   const [activeView, setActiveView] = useState<AppView>('dashboard');
   const [activeQuoteForPreview, setActiveQuoteForPreview] = useState<Quote | null>(null);
@@ -152,6 +154,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setQuotes(data.quotes); setSchedules(Array.isArray(data.schedules) ? data.schedules : []); setFinanceEntries(Array.isArray(data.financeEntries) ? data.financeEntries : []); setClients(data.clients); setCatalog(data.catalog);
     setExpenses(data.expenses); setCompany(data.company); setNotifications(data.notifications);
     numberRef.current = Math.max(data.lastQuoteNumber || 0, ...data.quotes.map(q => Number(/^#(\d+)$/.exec(q.number)?.[1] || 0)));
+    // Carregar um workspace não é uma edição: não aumentar a revisão ao abrir a conta.
+    lastSavedSignatureRef.current = workspaceSignature({
+      quotes: data.quotes, clients: data.clients, catalog: data.catalog, expenses: data.expenses,
+      company: data.company, notifications: data.notifications, schedules: data.schedules ?? [],
+      financeEntries: data.financeEntries ?? [], lastQuoteNumber: numberRef.current
+    });
   };
 
   // A new authenticated account starts with NO commercial data.
@@ -175,7 +183,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!ready) return;
     if (!session || syncStatus === 'error') return;
-    latestRef.current = snapshot();
+    const currentSnapshot = snapshot();
+    if (!needsWorkspaceSave(currentSnapshot, lastSavedSignatureRef.current)) return;
+    latestRef.current = currentSnapshot;
     setSyncStatus('saving');
     const timer = window.setTimeout(async () => {
       if (saveBusyRef.current) return;
@@ -185,6 +195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const next = latestRef.current;
           latestRef.current = null;
           revisionRef.current = await saveWorkspace(session, next, revisionRef.current);
+          lastSavedSignatureRef.current = workspaceSignature(next);
         }
         setSyncStatus('saved');
       } catch (err) {
@@ -267,8 +278,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveBusyRef.current = true;
     setSyncStatus('saving');
     try {
-      revisionRef.current = await saveWorkspace(session, snapshot(), revisionRef.current);
-      latestRef.current = null;
+      // Concluir todas as alterações pendentes, inclusive edições durante esta tentativa.
+      latestRef.current = snapshot();
+      while (latestRef.current) {
+        const next = latestRef.current;
+        latestRef.current = null;
+        revisionRef.current = await saveWorkspace(session, next, revisionRef.current);
+        lastSavedSignatureRef.current = workspaceSignature(next);
+      }
       setSyncStatus('saved'); setSyncError('');
     } catch (err) {
       setSyncStatus('error'); setSyncError(err instanceof Error ? err.message : 'Falha de sincronização.');
