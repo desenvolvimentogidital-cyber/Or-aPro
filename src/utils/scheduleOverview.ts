@@ -5,7 +5,6 @@ import {progressPercent} from './execution.js';
 import {physicalFinancial} from './physicalFinancial.js';
 
 export const stageColors = ['#1686ff','#24bc69','#ff9a18','#f3483e','#995aff','#15b7d2','#ffc027','#f3389c','#3e84ff'] as const;
-const dateMs=(v:string)=>Date.parse(v+'T12:00:00Z');
 export const shortDate=(v:string|null|undefined)=>v&&validScheduleDate(v)?v.slice(8)+'/'+v.slice(5,7)+'/'+v.slice(0,4):'A definir';
 const monthLabel=(v:string)=>new Date(v+'-15T12:00:00Z').toLocaleDateString('pt-BR',{month:'short',year:'numeric',timeZone:'UTC'}).replace('.','').toUpperCase();
 const ym=(date:string)=>date.slice(0,7);
