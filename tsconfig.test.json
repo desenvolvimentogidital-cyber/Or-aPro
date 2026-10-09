@@ -27,6 +27,8 @@
     "src/utils/scheduleMath.ts",
     "src/utils/quoteSchedule.ts",
     "src/utils/scheduleDocument.ts",
+    "src/utils/scheduleOverview.ts",
+    "src/utils/scheduleDashboardDocument.ts",
     "src/utils/workDiary.ts",
     "src/utils/physicalFinancial.ts",
     "src/utils/scheduleSelection.ts",

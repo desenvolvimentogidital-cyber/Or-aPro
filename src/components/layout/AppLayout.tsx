@@ -55,6 +55,7 @@ export const AppLayout: React.FC = () => {
   const { session, logout } = useAuth();
 
   const { theme } = useTheme();
+  const scheduleWide = activeView === 'cronograma' && viewMode === 'responsive';
 
   const renderActiveView = () => {
     switch (activeView) {
@@ -97,7 +98,7 @@ export const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#07090d] text-slate-100 flex flex-col items-center justify-start p-0 sm:py-6 sm:px-4 font-sans select-none antialiased">
       {/* Operational status visible in both mobile and desktop. */}
-      <div className="w-full max-w-6xl px-3 py-2 flex items-center justify-between gap-2 text-[11px] border-b border-white/10 bg-[#141822] sm:rounded-xl sm:mb-2">
+      <div className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} px-3 py-2 flex items-center justify-between gap-2 text-[11px] border-b border-white/10 bg-[#141822] sm:rounded-xl sm:mb-2`}>
         <span className={syncStatus === 'error' ? 'text-rose-400' : syncStatus === 'saving' ? 'text-amber-300' : 'text-emerald-300'} role="status">
           {syncStatus === 'error' ? '⚠ Erro de sincronização' : !ready ? '☁ Conectando à conta…' : syncStatus === 'saving' ? '☁ Salvando na nuvem…' : '☁ Dados na nuvem'}
         </span>
@@ -106,7 +107,7 @@ export const AppLayout: React.FC = () => {
       {!ready && syncStatus === 'error' && <div role="alert" className="text-rose-200 text-xs px-3 py-2 w-full max-w-6xl">Falha ao carregar dados protegidos. <button className="underline" onClick={() => window.location.reload()}>Recarregar conexão</button></div>}
       {syncError && <div role="alert" className="text-rose-200 text-xs px-3 py-2 bg-rose-950/90 w-full max-w-6xl">{syncError}. Exporte um backup antes de fechar. {ready && <button className="underline ml-2" onClick={() => { void retrySync(); }}>Tentar novamente</button>}</div>}
       {/* Top Device Switcher Toolbar (for desktop preview testing) */}
-      <header className="w-full max-w-6xl hidden sm:flex items-center justify-between mb-3 px-2 text-xs">
+      <header className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} hidden sm:flex items-center justify-between mb-3 px-2 text-xs`}>
         <div className="flex items-center gap-2">
           <span
             className="w-2.5 h-2.5 rounded-full"
@@ -149,7 +150,7 @@ export const AppLayout: React.FC = () => {
         className={`w-full transition-all duration-300 relative flex flex-col ${
           viewMode === 'mobile'
             ? 'max-w-[420px] min-h-[860px] sm:h-[880px] bg-[#0c0e14] sm:rounded-[42px] sm:border-[8px] sm:border-[#1e232e] sm:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden'
-            : 'max-w-6xl min-h-screen sm:min-h-[850px] bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]'
+            : `${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} min-h-screen sm:min-h-[850px] bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]`
         }`}
       >
         {/* Navegacao lateral apenas no desktop; o modo celular permanece intacto. */}

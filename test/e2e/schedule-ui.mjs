@@ -30,6 +30,18 @@ try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
   const nav=page.getByRole('navigation',{name:'Navegação desktop'});
   await nav.getByRole('button',{name:'Cronograma SINAPI'}).click();
+  const overview=page.getByRole('region',{name:'Painel executivo do cronograma'});
+  await overview.waitFor({timeout:12000});
+  await overview.getByText('Cronograma de obras').waitFor();
+  await overview.getByText('Resumo das etapas e percentuais').waitFor();
+  await overview.getByText('Gráfico de Gantt').waitFor();
+  await overview.getByText('Curva S').waitFor();
+  await overview.getByText('Não informado').first().waitFor();
+  await overview.getByRole('button',{name:'Gerar relatório PDF'}).click();
+  const preview=page.frameLocator('iframe[title="Prévia do cronograma para PDF"]');
+  await preview.getByText('CRONOGRAMA DE OBRAS').waitFor();
+  await preview.getByText('CURVA S').waitFor();
+  await page.screenshot({path:'artifacts/cronograma-dashboard.png',fullPage:true}).catch(()=>{});
   const gantt=page.getByRole('region',{name:'Cronograma Gantt com datas e dias úteis'});
   await gantt.waitFor({timeout:12000});
   await gantt.getByText('D1',{exact:true}).waitFor();
@@ -44,6 +56,11 @@ try{
   const print=page.frameLocator('iframe[title="Prévia do cronograma para PDF"]');
   await print.getByText('Planejamento visual · dias úteis 1 a 15').waitFor();
   await print.getByText('02/11',{exact:true}).first().waitFor();
+  await page.setViewportSize({width:390,height:844});
+  await overview.waitFor();
+  const overflow = await page.evaluate(()=>document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(overflow <= 2, 'Dashboard mobile nao pode gerar scroll horizontal da pagina: '+overflow);
+  await page.screenshot({path:'artifacts/cronograma-mobile.png',fullPage:true}).catch(()=>{});
   assert.deepEqual(errors,[],'Erros JS durante navegacao e geracao de PDF');
   console.log('PASS Gantt UI 09/10 a 02/11 (feriado e finais de semana excluidos), paginas e iframe PDF');
 }finally{await browser.close();}
