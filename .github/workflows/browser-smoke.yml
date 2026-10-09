@@ -41,6 +41,8 @@ jobs:
         run: node test/e2e/pdf-integration.mjs
       - name: Navegacao desktop e mobile
         run: node test/e2e/desktop-navigation.mjs
+      - name: Integridade de cliente, financeiro, backup e conflitos (REST isolado)
+        run: node test/e2e/persistence-contract.mjs
       - name: Evidencias visuais
         if: always()
         uses: actions/upload-artifact@v4

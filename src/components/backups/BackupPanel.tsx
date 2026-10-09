@@ -7,7 +7,8 @@ export function BackupPanel() {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState('');
   const readFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.currentTarget.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
     try {
       if (file.size > 12_000_000) throw new Error('Arquivo muito grande. Limite: 12 MB.');
@@ -16,7 +17,7 @@ export function BackupPanel() {
       importBackup(data);
       setMessage('Backup carregado. Confira o indicador de salvamento antes de sair.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível importar o arquivo.'); }
-    finally { event.currentTarget.value = ''; }
+    finally { input.value = ''; }
   };
   return <>
     <button onClick={() => setOpen(true)} className="underline text-slate-300 text-xs hover:text-white">Backup</button>
