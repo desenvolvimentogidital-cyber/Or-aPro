@@ -67,6 +67,8 @@ try{
  await page.getByRole('button',{name:'Celular'}).click();
  await bottom.waitFor({state:'visible'});
  assert.equal(await side.isVisible(),false,'Preview de celular deve ocultar sidebar');
+ // A troca Celular/Fluido tem transição CSS de 300ms; aguardar a moldura estabilizar.
+ await page.waitForTimeout(450);
  const sim=await page.locator('main').boundingBox();
  assert.ok(sim.width>=390&&sim.width<=425,'Simulacao de celular desktop manteve moldura de 420px; largura medida='+sim.width);
  await page.getByRole('button',{name:'Fluido'}).click();
