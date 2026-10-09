@@ -25,6 +25,7 @@
     "src/utils/dashboardMetrics.ts",
     "src/types/schedule.ts",
     "src/utils/scheduleMath.ts",
+    "src/utils/quoteSchedule.ts",
     "src/utils/scheduleDocument.ts",
     "src/utils/workDiary.ts",
     "src/utils/physicalFinancial.ts",
