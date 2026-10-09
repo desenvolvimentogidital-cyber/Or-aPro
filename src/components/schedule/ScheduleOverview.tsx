@@ -88,7 +88,7 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
      </div>
    </div>
 
-   <div className="grid gap-2 xl:grid-cols-12">
+   <div className="grid items-start gap-2 xl:grid-cols-12">
      <div className={`${box} xl:col-span-8`}>
        <h3 className={title}><HardHat size={16} className="text-orange-400"/> Detalhamento dos serviços</h3>
        <div className="max-h-[375px] overflow-auto"><table className="w-full min-w-[700px] text-left text-[10px]">
