@@ -41,6 +41,8 @@ jobs:
         run: node test/e2e/pdf-integration.mjs
       - name: Navegacao desktop e mobile
         run: node test/e2e/desktop-navigation.mjs
+      - name: Selecao automatica de layout mobile / web e cronograma responsivo
+        run: node test/e2e/auto-layout.mjs
       - name: Quatro itens do orcamento para cronograma SINAPI (API isolada)
         run: node test/e2e/quote-to-schedule.mjs
       - name: Datas reais do Gantt e visualizacao de PDF
