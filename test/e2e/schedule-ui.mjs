@@ -56,6 +56,11 @@ try{
   const print=page.frameLocator('iframe[title="Prévia do cronograma para PDF"]');
   await print.getByText('Planejamento visual · dias úteis 1 a 15').waitFor();
   await print.getByText('02/11',{exact:true}).first().waitFor();
+  await page.setViewportSize({width:390,height:844});
+  await overview.waitFor();
+  const overflow = await page.evaluate(()=>document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(overflow <= 2, 'Dashboard mobile nao pode gerar scroll horizontal da pagina: '+overflow);
+  await page.screenshot({path:'artifacts/cronograma-mobile.png',fullPage:true}).catch(()=>{});
   assert.deepEqual(errors,[],'Erros JS durante navegacao e geracao de PDF');
   console.log('PASS Gantt UI 09/10 a 02/11 (feriado e finais de semana excluidos), paginas e iframe PDF');
 }finally{await browser.close();}
