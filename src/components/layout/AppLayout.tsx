@@ -149,7 +149,7 @@ export const AppLayout: React.FC = () => {
       <main
         className={`w-full transition-all duration-300 relative flex flex-col ${
           viewMode === 'mobile'
-            ? 'flex-1 min-h-0 bg-[#0c0e14] md:flex-none md:max-w-[420px] md:h-[880px] md:rounded-[42px] md:border-[8px] md:border-[#1e232e] md:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] overflow-hidden'
+            ? 'orcapro-mobile-shell flex-1 min-h-0 bg-[#0c0e14] overflow-hidden'
             : `${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} min-h-screen sm:min-h-[850px] bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl overflow-hidden lg:grid lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)]`
         }`}
       >
