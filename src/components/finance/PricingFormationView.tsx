@@ -161,7 +161,7 @@ export const PricingFormationView: React.FC = () => {
               </div>
               <div className="col-span-4">
                 <EditableNumericInput
-                  min={0.01} required
+                  min={0.01}
                   placeholder="R$ 0,00"
                   value={newExpAmount} emptyAsBlank
                   onCommit={setNewExpAmount}
