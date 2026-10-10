@@ -112,7 +112,13 @@ export const ScheduleView:React.FC=()=>{
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
   const staffing=useMemo(()=>report?peakCrewDemand(report):null,[report]);
   // Um grupo de 15 dias úteis por vez: datas REAIS legíveis, mesmo em obras longas.
-  const timeline=useMemo(()=>current&&report?.finishDate?scheduleWorkdayDates(current.startDate,report.finishDate,current.holidays||[]):[],[current,report]);
+  // Mesmo com etapas pendentes, mostre as datas das etapas já dimensionadas.
+  // Não atribua término GLOBAL à obra enquanto houver qualquer pendência.
+  const visibleFinish=report?.finishDate || report?.entries.reduce<string|null>(
+    (max,e)=>e.end && (!max||e.end>max)?e.end:max,null) || null;
+  const timeline=useMemo(()=>current&&visibleFinish
+    ?scheduleWorkdayDates(current.startDate,visibleFinish,current.holidays||[])
+    :[],[current,visibleFinish]);
   const pageCount=Math.ceil(timeline.length/15);
   const safeGanttPage=Math.min(ganttPage,Math.max(0,pageCount-1));
   const ganttDates=timeline.slice(safeGanttPage*15,(safeGanttPage+1)*15);
@@ -795,7 +801,8 @@ export const ScheduleView:React.FC=()=>{
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-bold"><BarChart3 size={17} style={{color:theme.primaryColor}}/> Calendário da obra — dia a dia</h2><p className="mt-1 text-[11px] text-slate-400">Cada coluna identifica um <strong>dia útil com a data real</strong>. As faixas laranja mostram em quais dias cada serviço está previsto. Sábados, domingos e datas não úteis informadas são excluídos.</p></div>
           {pageCount>1&&<div className="flex items-center gap-2 text-[11px]"><button type="button" disabled={safeGanttPage===0} onClick={()=>setGanttPage(p=>Math.max(0,p-1))} className="rounded-lg border border-white/15 px-3 py-2 text-slate-100 disabled:opacity-30">← Dias anteriores</button><span className="whitespace-nowrap text-slate-400">Bloco {safeGanttPage+1} de {pageCount}</span><button type="button" disabled={safeGanttPage===pageCount-1} onClick={()=>setGanttPage(p=>Math.min(pageCount-1,p+1))} className="rounded-lg border border-white/15 px-3 py-2 text-slate-100 disabled:opacity-30">Próximos dias →</button></div>}
         </div>
-        {report.workingDays!==null && ganttDates.length>0 ? <>
+        {ganttDates.length>0 ? <>
+          {report.pending>0&&<p role="status" className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-200">Planejamento parcial: {report.pending} etapa(s) ainda não possuem dados suficientes para calcular suas datas. As barras abaixo representam apenas atividades dimensionadas; o prazo final da obra permanece pendente.</p>}
           <div className="rounded-xl border border-white/10 overflow-x-auto" role="region" aria-label="Cronograma Gantt com datas e dias úteis">
             <div className="min-w-[820px]">
               <div className="grid border-b border-white/10 bg-[#1e293b]" style={{gridTemplateColumns:`minmax(210px,240px) repeat(${ganttDates.length},minmax(38px,1fr))`}}>
@@ -808,7 +815,7 @@ export const ScheduleView:React.FC=()=>{
               </div>)}
             </div>
           </div>
-          <p className="text-[10px] text-slate-400">Exibindo de {ganttDates[0].split('-').reverse().join('/')} a {ganttDates[ganttDates.length-1].split('-').reverse().join('/')} · Período total previsto: {report.workingDays} dias úteis, de {timeline[0].split('-').reverse().join('/')} a {report.finishDate?.split('-').reverse().join('/')}. O PDF inclui os quadros de datas e duração de cada etapa.</p>
+          <p className="text-[10px] text-slate-400">Exibindo de {ganttDates[0].split('-').reverse().join('/')} a {ganttDates[ganttDates.length-1].split('-').reverse().join('/')} · Período {report.pending?'parcial visível':'total previsto'}: {report.workingDays??timeline.length} dias úteis, de {timeline[0].split('-').reverse().join('/')} a {visibleFinish?.split('-').reverse().join('/')}. O PDF inclui os quadros de datas e duração de cada etapa.</p>
           <p className="text-[10px] text-amber-300/90">A disponibilidade de profissionais compartilhados entre frentes paralelas não é distribuída automaticamente. Confira as equipes antes de prometer datas ao cliente. Medição realizada não equivale a execução em uma data específica do gráfico.</p>
         </> : <div className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-slate-400">Informe quantidade, coeficientes e equipe por função em todas as etapas para calcular datas e exibir o calendário. Sem esses dados, nenhum prazo é inventado.</div>}
       </section>
