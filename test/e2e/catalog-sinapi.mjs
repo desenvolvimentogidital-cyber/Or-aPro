@@ -61,7 +61,17 @@ try{
  await page.getByPlaceholder('MM/AAAA').fill('08/2026');
  await page.getByLabel('UF da referência').selectOption('SP');
  await page.getByLabel('Encargos SINAPI').selectOption('sem_desoneracao');
- await region.getByLabel('Buscar composição SINAPI para o serviço').fill('instalação tomada');
+ // Ao alternar de módulo para cadastrar mais serviços, a planilha deve continuar carregada.
+ const mobileNav=page.getByRole('navigation',{name:'Navegação Principal'});
+ await mobileNav.getByRole('button',{name:'Início'}).click();
+ await mobileNav.getByRole('button',{name:'Cronograma'}).click();
+ const reopened=page.getByRole('region',{name:'Serviços cadastrados e SINAPI'});
+ await reopened.waitFor();
+ assert.equal(await page.getByLabel('UF da referência').inputValue(),'SP');
+ assert.equal(await page.getByLabel('Encargos SINAPI').inputValue(),'sem_desoneracao');
+ await reopened.getByRole('group',{name:'Selecionar serviço do catálogo'})
+   .getByRole('button',{name:/Instalar tomada na parede/}).click();
+ await reopened.getByLabel('Buscar composição SINAPI para o serviço').fill('instalação tomada');
  await region.getByRole('group',{name:'Escolher composição SINAPI'})
    .getByRole('button',{name:/SINAPI 100001/}).click();
  await region.getByText(/unidade do catálogo é/).waitFor();
