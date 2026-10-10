@@ -234,7 +234,7 @@ export const ScheduleView:React.FC=()=>{
     if(current.tasks.some(t=>t.quoteItemId===item.id)){setError('Este item já está vinculado ao cronograma.');return;}
     const key=quoteComposition[item.id]||'';
     const stored=savedSinapiForQuote(item,catalog);
-    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key)
+    const chosen=knownCompositions.find(c=>`${c.code}|${c.unit}`===key)
       || (stored && `${stored.code}|${stored.unit}`===key?stored:undefined);
     if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
@@ -381,7 +381,7 @@ export const ScheduleView:React.FC=()=>{
       </div>}</>}
       </>}
     </section>
-    <section aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
+    <section id="orcapro-sinapi-lookup" aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Wrench size={18} className="text-orange-400"/> Meus serviços → SINAPI</h2>
         <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise por nome ou código. O OrçaPro consulta composições analíticas salvas e também um catálogo online de terceiros, identificado separadamente. Você escolhe o serviço correto; horas-homem não são inventadas.</p>
@@ -513,15 +513,15 @@ export const ScheduleView:React.FC=()=>{
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
-      {!imported.length && !attached.items.some(i=>savedSinapiForQuote(i,catalog)) && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima, ou vincule uma composição ao serviço no quadro <strong>Meus serviços → SINAPI</strong>. Sem coeficientes analíticos reais não é possível calcular equipe nem duração.</p>}
+      {!knownCompositions.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Nenhuma composição analítica disponível. Use <strong>Pesquisar este serviço no catálogo SINAPI online</strong> para localizar código, descrição e unidade; a etapa ficará pendente de horas-homem até completar os coeficientes.</p>}
       {attached.items.length===0 && <p className="text-xs text-slate-400">O orçamento vinculado ainda não possui itens de serviço.</p>}
       {attached.items.map(item=>{
         const already=current.tasks.find(t=>t.quoteItemId===item.id);
         const expanded=activeQuoteItem===item.id;
         const query=quoteSearch[item.id]||'';
         const remembered=savedSinapiForQuote(item,catalog);
-        const options=remembered && !imported.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
-          ? [...imported,remembered]:imported;
+        const options=remembered && !knownCompositions.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
+          ? [...knownCompositions,remembered]:knownCompositions;
         const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
           .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
         const selectedKey=quoteComposition[item.id]||'';
@@ -542,13 +542,23 @@ export const ScheduleView:React.FC=()=>{
             <label className="block text-[11px] text-slate-400">Buscar composição por nome ou código SINAPI
               <input className={`${control} mt-1`} value={query} onChange={e=>setQuoteSearch(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: alvenaria, drywall, porcelanato, pintura ou código"/>
             </label>
+             <button type="button" onClick={()=>{
+               setCatalogSinapiQuery(query.trim()||item.name);
+               setCatalogQuoteItemId(item.id);
+               setCatalogQuantity(String(item.quantity));
+               setCatalogChoice('');
+               setSelectedOnline(null);
+               const origin=item.catalogItemId?catalog.find(c=>c.id===item.catalogItemId):catalog.find(c=>c.name.toLowerCase()===item.name.toLowerCase());
+               setCatalogSelectedId(origin?.type==='servico'?origin.id:'');
+               document.getElementById('orcapro-sinapi-lookup')?.scrollIntoView({behavior:'smooth',block:'start'});
+             }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 text-xs font-bold text-sky-200 hover:bg-sky-500/20"><Search size={15}/> Pesquisar este serviço no catálogo SINAPI online</button>
             <label className="block text-[11px] text-slate-400">Confirme a composição adequada — apenas unidade {item.unit}
               <select className={`${control} mt-1`} value={selectedKey} onChange={e=>setQuoteComposition(old=>({...old,[item.id]:e.target.value}))}>
                 <option value="">Selecione uma composição SINAPI</option>
                 {matches.map(c=><option key={`${c.code}|${c.unit}`} value={`${c.code}|${c.unit}`}>{c.code} · {c.description.slice(0,110)}</option>)}
               </select>
             </label>
-            {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição com a mesma unidade de “{item.unit}”. Pesquise por código, confira a unidade do orçamento ou selecione o serviço em <strong>Meus serviços → SINAPI</strong> para criar uma etapa independente. Não será atribuído valor financeiro incorreto.</p>}
+             {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição analítica com unidade “{item.unit}” nesta base. Use a busca online ou importe outra referência. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
