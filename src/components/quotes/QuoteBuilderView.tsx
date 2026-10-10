@@ -24,6 +24,7 @@ import {
 import { Client, CatalogItem, QuoteItem, Quote, QuoteVisibilitySettings, ItemType } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { quoteTotals, newId, dateKey } from '../../utils/quoteMath';
+import { EditableNumericInput } from '../common/EditableNumericInput';
 
 export const QuoteBuilderView: React.FC = () => {
   const { clients, catalog, addQuote, updateQuote, editingQuote, setEditingQuote, draftClientId, setDraftClientId, getNextQuoteNumber, setActiveView, setActiveQuoteForPreview } = useApp();
@@ -338,11 +339,10 @@ export const QuoteBuilderView: React.FC = () => {
             <label className="text-[11px] text-slate-400 font-medium block mb-1">
               Deslocamento / Frete (R$)
             </label>
-            <input
-              type="number"
-              min="0"
-              value={travelCost || ''}
-              onChange={e => setTravelCost(parseFloat(e.target.value) || 0)}
+            <EditableNumericInput
+              min={0}
+              value={travelCost} emptyAsBlank
+              onCommit={setTravelCost}
               placeholder="0,00"
               className="w-full bg-[#1b202c] text-xs font-semibold text-white px-3 py-2 rounded-xl border border-white/10 focus:outline-none"
             />
@@ -353,11 +353,10 @@ export const QuoteBuilderView: React.FC = () => {
               Desconto {discountType === 'percentage' ? '(%)' : '(R$)'}
             </label>
             <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min="0"
-                value={discountValue || ''}
-                onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)}
+              <EditableNumericInput
+                min={0} max={discountType==='percentage'?100:undefined}
+                value={discountValue} emptyAsBlank
+                onCommit={setDiscountValue}
                 placeholder="0,00"
                 className="w-full bg-[#1b202c] text-xs font-semibold text-white px-3 py-2 rounded-xl border border-white/10 focus:outline-none"
               />
