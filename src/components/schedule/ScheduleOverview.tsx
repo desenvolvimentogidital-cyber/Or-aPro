@@ -45,8 +45,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
        </div>
      </div>
      <div className="relative z-10 grid min-w-[230px] gap-x-3 gap-y-1 text-[11px] sm:grid-cols-[105px_auto]">
-       <span className="font-semibold text-slate-400">OBRA</span><strong className="truncate" title={schedule.title}>{schedule.title||'Sem identificação'}</strong>
-       <span className="font-semibold text-slate-400">LOCAL</span><span className="truncate" title={schedule.siteAddress||''}>{schedule.siteAddress||'Não informado'}</span>
+       <span className="font-semibold text-slate-400">OBRA</span><strong className="min-w-0 break-words" title={schedule.title}>{schedule.title||'Sem identificação'}</strong>
+       <span className="font-semibold text-slate-400">LOCAL</span><span className="min-w-0 break-words" title={schedule.siteAddress||''}>{schedule.siteAddress||'Não informado'}</span>
        <span className="font-semibold text-slate-400">INÍCIO PREVISTO</span><span>{shortDate(model.start)}</span>
        <span className="font-semibold text-slate-400">TÉRMINO PREVISTO</span><span>{shortDate(model.end)}</span>
        <span className="font-semibold text-slate-400">DURAÇÃO TOTAL</span><span>{model.duration===null?'A definir':`${model.duration} dias úteis`}</span>
@@ -67,16 +67,17 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
      </div>
      <div className={`${box} xl:col-span-8`}>
        <h3 className={title}><CalendarDays size={16} className="text-orange-400"/> Gráfico de Gantt — cronograma físico</h3>
-       {labels.length ? <div className="overflow-x-auto" role="region" aria-label="Gantt mensal do planejamento">
+        {labels.length>0&&<p className="px-3 py-1.5 text-[11px] text-slate-400 sm:hidden">Deslize o gráfico para os lados para visualizar todos os meses.</p>}
+       {labels.length ? <div className="orcapro-horizontal-region overflow-x-auto" role="region" aria-label="Gantt mensal do planejamento" tabIndex={0}>
          <div style={{minWidth:width}}>
            <div className="grid border-b border-[#214766] bg-[#10263b]" style={{gridTemplateColumns:`220px repeat(${labels.length},minmax(0,1fr))`}}>
-             <div className="p-2 text-[10px] font-bold uppercase">Atividade</div>
+             <div className="sticky left-0 z-10 border-r border-[#23506b] bg-[#10263b] p-2 text-[10px] font-bold uppercase">Atividade</div>
              {labels.map(m=><div key={m.key} className="border-l border-[#23506b] px-0.5 py-2 text-center text-[10px] font-bold uppercase">{m.label}</div>)}
            </div>
            {summary.map((s,i)=>{
              const bar=rangeOf(s,labels);
              return <div key={s.id} className="grid min-h-[41px] border-b border-[#1d3647] last:border-0" style={{gridTemplateColumns:'220px 1fr'}}>
-               <div className="flex min-w-0 items-center gap-2 border-r border-[#23506b] px-2 py-1.5 text-[10px]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-bold text-white" style={{background:s.color}}>{i+1}</span><span className="truncate" title={s.description}>{s.description}</span></div>
+               <div className="sticky left-0 z-10 flex min-w-0 items-center gap-2 border-r border-[#23506b] bg-[#0c2032] px-2 py-1.5 text-[10px]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-bold text-white" style={{background:s.color}}>{i+1}</span><span className="truncate" title={s.description}>{s.description}</span></div>
                <div className="relative min-h-[41px]" style={{backgroundImage:'linear-gradient(to right,rgba(40,86,116,.6) 1px,transparent 1px)',backgroundSize:`${100/labels.length}% 100%`}}>
                  {bar?<div className="absolute top-[11px] h-[16px] rounded-[3px] border border-white/10 shadow-[0_0_9px_rgba(0,0,0,.45)]" style={{left:`${bar.left}%`,width:`${bar.width}%`,background:s.color}} title={`${s.description}: ${shortDate(s.start)} a ${shortDate(s.end)} · ${s.duration} dias úteis`}/>:<span className="absolute left-3 top-3 text-[10px] italic text-amber-300">Prazo pendente</span>}
                </div>
@@ -91,7 +92,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
    <div className="grid items-start gap-2 xl:grid-cols-12">
      <div className={`${box} xl:col-span-8`}>
        <h3 className={title}><HardHat size={16} className="text-orange-400"/> Detalhamento dos serviços</h3>
-       <div className="max-h-[375px] overflow-auto"><table className="w-full min-w-[700px] text-left text-[10px]">
+       <p className="px-3 py-1.5 text-[11px] text-slate-400 sm:hidden">Arraste a tabela lateralmente para consultar todas as colunas.</p>
+        <div className="orcapro-horizontal-region max-h-[375px] overflow-auto" role="region" aria-label="Tabela de serviços e prazos do cronograma" tabIndex={0}><table className="w-full min-w-[700px] text-left text-[10px]">
          <thead className="sticky top-0 z-10 bg-[#122538] text-slate-300"><tr>{['Etapa','Serviço / quantidade','% HH','Início','Término','Dias úteis','Status'].map(h=><th key={h} className="whitespace-nowrap px-2 py-2 uppercase">{h}</th>)}</tr></thead>
          <tbody>{summary.map((s,i)=><tr key={s.id} className="border-t border-[#1b354c]">
            <td className="px-2 py-2"><span className="rounded px-2 py-1 font-bold text-white" style={{background:s.color}}>{i+1}</span></td>
