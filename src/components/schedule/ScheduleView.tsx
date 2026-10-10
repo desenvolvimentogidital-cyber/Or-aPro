@@ -120,6 +120,7 @@ export const ScheduleView:React.FC=()=>{
     const roles=new Map<string,{code:string;role:string;hh:number}>();
     let hh=0,finished=0,withoutHH=0;
     for(const entry of report?.entries||[]) {
+      if(!Number.isFinite(entry.task.quantity)||entry.task.quantity<=0){withoutHH++;continue;}
       const remainingQuantity=Math.max(0,entry.task.quantity-measuredQuantity(entry.task));
       if(remainingQuantity<=0.000001){finished++;continue;}
       if(!entry.labor.length){withoutHH++;continue;}
