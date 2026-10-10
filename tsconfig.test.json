@@ -29,6 +29,7 @@
     "src/utils/scheduleMath.ts",
     "src/utils/quoteSchedule.ts",
     "src/utils/catalogSinapi.ts",
+    "src/utils/sinapiCategories.ts",
     "src/services/sinapiOnline.ts",
     "src/utils/constructionReferences.ts",
     "src/utils/scheduleDocument.ts",
