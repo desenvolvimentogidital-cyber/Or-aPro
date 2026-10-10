@@ -120,10 +120,34 @@ try{
  await global.getByRole('group',{name:'Escolher composição SINAPI'})
   .getByRole('button',{name:/SINAPI 100860/}).waitFor({timeout:13000});
  assert.ok(queries.some(q=>q.includes('chuveiro'))&&queries.some(q=>q.includes('monof'))&&queries.some(q=>q.includes('100860')));
+ // Recuperar tarefa criada antes como "sem HH": mantém id, quantidade e progresso.
+ store.payload.schedules[0].tasks.push({
+  id:'etapa-pendente-qa',quantity:1,crew:{},quoteItemId:undefined,
+  composition:{code:'101494',unit:'UN',
+   description:'ENTRADA DE ENERGIA ELÉTRICA MONOFÁSICA, CABO 16 MM2 — pendente',
+   sourceFile:'SINPRES (catálogo textual)',sourceSheet:'Busca online',labor:[]},
+  notes:'Etapa anterior pendente'
+ });
  await page.reload({waitUntil:'domcontentloaded'});
  await page.getByRole('navigation',{name:'Navegação Principal'})
   .getByRole('button',{name:'Cronograma'}).click();
- assert.equal(store.payload.schedules[0].tasks.length,2);
+ const pending=page.getByRole('region',{name:'Etapas SINAPI pendentes de horas-homem'});
+ await pending.getByRole('button',{name:/Buscar HH do código 101494 no Supabase/}).click();
+ await pending.getByRole('button',{name:/Aplicar coeficientes analíticos/}).waitFor({timeout:13000});
+ await pending.getByLabel('UF para etapas pendentes').selectOption('SP');
+ await pending.getByLabel('Encargos para etapas pendentes').selectOption('sem_desoneracao');
+ await pending.getByRole('button',{name:/Aplicar coeficientes analíticos/}).click();
+ await page.waitForTimeout(1000);
+ assert.equal(store.payload.schedules[0].tasks.length,3);
+ const restored=store.payload.schedules[0].tasks.find(t=>t.id==='etapa-pendente-qa');
+ assert.equal(restored.composition.code,'101494');
+ assert.equal(restored.composition.reference,'09/2026');
+ assert.equal(restored.composition.uf,'SP');
+ assert.ok(restored.composition.labor.length>0,'A tarefa pendente deve recuperar as HH da biblioteca');
+ assert.ok(Object.values(restored.crew).every(n=>n>0),'Equipe simulada usa coeficientes reais');
+ assert.equal(restored.quantity,1);
+ assert.equal(store.payload.schedules[0].tasks[0].quoteItemId,'qa-chuveiro');
+ assert.equal(store.payload.schedules[0].tasks[1].quoteItemId,'qa-mono');
  assert.deepEqual(errors,[]);
- console.log('PASS SINAPI 09/2026 no Android: 9.136 da biblioteca persistida, orçamento 22 chuveiros e 6 padrões monofásicos, horas e equipes, busca livre simultânea e dados salvos');
+ console.log('PASS SINAPI 09/2026 no Android: 9.136 no Supabase; orçamento 22 chuveiros/6 padrões; restauração de HH em etapa pendente; vínculos intactos');
 } finally {await browser.close();}
