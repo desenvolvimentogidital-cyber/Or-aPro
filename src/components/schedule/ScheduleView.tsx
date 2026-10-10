@@ -82,6 +82,9 @@ export const ScheduleView:React.FC=()=>{
   const [catalogQuoteItemId,setCatalogQuoteItemId]=useState('');
   const [showImport,setShowImport]=useState(true);
   const [savedCompositions,setSavedCompositions]=useState<SinapiComposition[]>([]);
+  const [quoteSavedCompositions,setQuoteSavedCompositions]=useState<SinapiComposition[]>([]);
+  const [quoteLibraryStatus,setQuoteLibraryStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const [quoteLibraryError,setQuoteLibraryError]=useState('');
   const [savedLibraryCount,setSavedLibraryCount]=useState<number|null>(null);
   const [libraryStatus,setLibraryStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
   const [libraryError,setLibraryError]=useState('');
@@ -117,7 +120,8 @@ export const ScheduleView:React.FC=()=>{
   const activeQuoteTerm=activeQuoteItem
     ? quoteSearch[activeQuoteItem]?.trim()||attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
     : '';
-  const savedLibraryTerm=(activeQuoteItem?activeQuoteTerm:(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim())).slice(0,100);
+  // Consultas independentes: abrir Configurar no orçamento não pode bloquear a busca livre do catálogo.
+  const savedLibraryTerm=(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim()).slice(0,100);
   useEffect(()=>{
     if(!session)return;
     let cancelled=false;
@@ -136,9 +140,25 @@ export const ScheduleView:React.FC=()=>{
     },350);
     return()=>{window.clearTimeout(id);controller.abort();};
   },[session?.user.id,session?.access_token,savedLibraryTerm,savedLibraryCount]);
+  useEffect(()=>{
+    if(!session||!activeQuoteItem||activeQuoteTerm.trim().length<2){
+      setQuoteSavedCompositions([]);setQuoteLibraryStatus('idle');setQuoteLibraryError('');return;
+    }
+    const controller=new AbortController();
+    setQuoteLibraryStatus('loading');setQuoteLibraryError('');
+    const id=window.setTimeout(()=>{
+      searchSavedSinapi(session,activeQuoteTerm,controller.signal).then(rows=>{
+        if(!controller.signal.aborted){setQuoteSavedCompositions(rows);setQuoteLibraryStatus('ready');}
+      }).catch(e=>{
+        if(!controller.signal.aborted){setQuoteSavedCompositions([]);setQuoteLibraryStatus('error');
+          setQuoteLibraryError(e instanceof Error?e.message:'Falha ao consultar a base SINAPI salva.');}
+      });
+    },280);
+    return()=>{window.clearTimeout(id);controller.abort();};
+  },[session?.user.id,session?.access_token,activeQuoteItem,activeQuoteTerm,savedLibraryCount]);
   const physicalMoney=current?physicalFinancial(current,attached):null;
-  const filtered=useMemo(()=>[...imported,...savedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,search]);
-  const selected=[...imported,...savedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
+  const filtered=useMemo(()=>[...imported,...savedCompositions,...quoteSavedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,quoteSavedCompositions,search]);
+  const selected=[...imported,...savedCompositions,...quoteSavedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
   const catalogServices=useMemo(()=>{
     const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     return catalog.filter(item=>item.type==='servico' &&
@@ -176,23 +196,28 @@ export const ScheduleView:React.FC=()=>{
     // A importação atual é prioritária; composições antigas são mostradas com fonte explícita.
     imported.forEach(collect);
     savedCompositions.filter(isAnalyticalSinapi).forEach(collect);
+    quoteSavedCompositions.filter(isAnalyticalSinapi).forEach(collect);
     catalog.forEach(item=>{if(usableSinapiComposition(item.sinapiComposition))collect(item.sinapiComposition);});
     schedules.forEach(schedule=>schedule.tasks.forEach(task=>{
       if(usableSinapiComposition(task.composition))collect(task.composition);
     }));
     return items;
-  },[imported,savedCompositions,catalog,schedules]);
+  },[imported,savedCompositions,quoteSavedCompositions,catalog,schedules]);
   const catalogCandidates=useMemo(()=>{
     // Pesquisa SINAPI funciona SEM exigir seleção prévia no catálogo.
     // Quando não há termo nem serviço escolhido, não despeja milhares de itens no Android.
     if(!selectedCatalogService && !catalogSinapiQuery.trim())return [];
     const target=selectedCatalogService||{name:'',unit:''};
     const results=findCatalogSinapiCandidates(target,knownCompositions,catalogSinapiQuery,50);
+    // A consulta SQL reconhece termos comerciais como "padrão monofásico" e
+    // devolve "ENTRADA DE ENERGIA ELÉTRICA MONOFÁSICA". Não filtre novamente pelo nome.
+    const ranked=[...savedCompositions.filter(isAnalyticalSinapi),...results].filter((c,i,all)=>
+      all.findIndex(other=>compositionIdentity(other)===compositionIdentity(c))===i).slice(0,50);
     const linked=selectedCatalogService?.sinapiComposition;
     if(usableSinapiComposition(linked) && !catalogSinapiQuery.trim() &&
-       !results.some(c=>compositionIdentity(c)===compositionIdentity(linked)))
-      return [linked,...results].slice(0,50);
-    return results;
+       !ranked.some(c=>compositionIdentity(c)===compositionIdentity(linked)))
+      return [linked,...ranked].slice(0,50);
+    return ranked;
   },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
   const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
   const filteredOnlineResults=onlineResults.filter(row=>
@@ -611,8 +636,12 @@ export const ScheduleView:React.FC=()=>{
         const remembered=savedSinapiForQuote(item,catalog);
         const options=remembered && !knownCompositions.some(c=>compositionIdentity(c)===compositionIdentity(remembered))
           ? [...knownCompositions,remembered]:knownCompositions;
-        const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
+        const suggestions=expanded?findCatalogSinapiCandidates(item,options,query,20)
           .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
+        const matches=[...(expanded?quoteSavedCompositions.filter(c=>
+          isAnalyticalSinapi(c)&&sameServiceUnit(c.unit,item.unit)):[]),...suggestions]
+          .filter((c,i,all)=>all.findIndex(other=>compositionIdentity(c)===compositionIdentity(other))===i)
+          .slice(0,40);
         const selectedKey=quoteComposition[item.id]||'';
         const chosen=options.find(c=>compositionIdentity(c)===selectedKey);
         if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
@@ -647,7 +676,10 @@ export const ScheduleView:React.FC=()=>{
                 {matches.map(c=><option key={compositionIdentity(c)} value={compositionIdentity(c)}>{c.code} · {c.reference||"?"} · {c.description.slice(0,100)}</option>)}
               </select>
             </label>
-             {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição analítica com unidade “{item.unit}” nesta base. Use a busca online ou importe outra referência. Não será atribuído valor financeiro incorreto.</p>}
+             {quoteLibraryStatus==='loading'&&<p role="status" className="text-xs text-orange-200">Consultando biblioteca SINAPI salva para “{activeQuoteTerm}”…</p>}
+             {quoteLibraryStatus==='error'&&<p role="alert" className="text-xs text-rose-300">Erro ao consultar a biblioteca SINAPI: {quoteLibraryError}</p>}
+             {quoteLibraryStatus==='ready'&&<p role="status" className="text-[11px] text-emerald-200">{quoteSavedCompositions.length} composição(ões) da biblioteca SINAPI encontradas por “{activeQuoteTerm}”. Selecione o código e confira a descrição técnica.</p>}
+             {!matches.length && quoteLibraryStatus==='ready' && <p className="text-[11px] text-amber-200">Nenhuma composição com unidade compatível “{item.unit}” para o termo. Experimente “entrada energia monofásica”, “chuveiro”, “tomada” ou o código SINAPI. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
