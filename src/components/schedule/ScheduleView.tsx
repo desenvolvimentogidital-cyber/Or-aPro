@@ -13,7 +13,8 @@ import { resolveScheduleSelection } from '../../utils/scheduleSelection';
 import { decimalFromInput, mergeSinapiReports } from '../../utils/sinapi';
 import type { SinapiComposition, WorkSchedule, ScheduleTask } from '../../types/schedule';
 import { newId } from '../../utils/quoteMath';
-import { findQuoteSinapiCandidates, sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
+import { sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
+import { compositionIdentity, findCatalogSinapiCandidates, savedSinapiForQuote, usableSinapiComposition } from '../../utils/catalogSinapi';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -37,7 +38,7 @@ function exportScheduleCSV(schedule:WorkSchedule){
   const a=document.createElement('a');a.href=url;a.download=`orcapro-cronograma-${schedule.id}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 export const ScheduleView:React.FC=()=>{
-  const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,company,ready,syncStatus}=useApp();
+  const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,catalog,updateCatalogItem,company,ready,syncStatus}=useApp();
   const {theme}=useTheme();
   const [imported,setImported]=useState<SinapiComposition[]>([]);
   const [importInfo,setImportInfo]=useState('');
@@ -57,6 +58,13 @@ export const ScheduleView:React.FC=()=>{
   const [measurementInput,setMeasurementInput]=useState<Record<string,string>>({});
   const [measurementDate,setMeasurementDate]=useState<Record<string,string>>({});
   const [measurementNote,setMeasurementNote]=useState<Record<string,string>>({});
+  const [catalogServiceQuery,setCatalogServiceQuery]=useState('');
+  const [catalogSelectedId,setCatalogSelectedId]=useState('');
+  const [catalogSinapiQuery,setCatalogSinapiQuery]=useState('');
+  const [catalogChoice,setCatalogChoice]=useState('');
+  const [catalogQuantity,setCatalogQuantity]=useState('');
+  const [catalogTargetDays,setCatalogTargetDays]=useState('');
+  const [catalogNotice,setCatalogNotice]=useState('');
   const [showImport,setShowImport]=useState(true);
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
@@ -89,6 +97,46 @@ export const ScheduleView:React.FC=()=>{
   const physicalMoney=current?physicalFinancial(current,attached):null;
   const filtered=useMemo(()=>imported.filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,search]);
   const selected=imported.find(c=>`${c.code}|${c.unit}`===selectedComposition);
+  const catalogServices=useMemo(()=>{
+    const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    return catalog.filter(item=>item.type==='servico' &&
+      (!query || (item.name+' '+item.category).normalize('NFD')
+        .replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query))).slice(0,45);
+  },[catalog,catalogServiceQuery]);
+  const selectedCatalogService=catalog.find(item=>item.id===catalogSelectedId && item.type==='servico');
+  const knownCompositions=useMemo(()=>{
+    const items:SinapiComposition[]=[];
+    const used=new Set<string>();
+    const collect=(c:SinapiComposition)=>{
+      const key=compositionIdentity(c);
+      if(!used.has(key)){items.push(c);used.add(key);}
+    };
+    // A importação atual é prioritária; composições antigas são mostradas com fonte explícita.
+    imported.forEach(collect);
+    catalog.forEach(item=>{if(usableSinapiComposition(item.sinapiComposition))collect(item.sinapiComposition);});
+    schedules.forEach(schedule=>schedule.tasks.forEach(task=>{
+      if(usableSinapiComposition(task.composition))collect(task.composition);
+    }));
+    return items;
+  },[imported,catalog,schedules]);
+  const catalogCandidates=useMemo(()=>{
+    if(!selectedCatalogService)return [];
+    const results=findCatalogSinapiCandidates(selectedCatalogService,knownCompositions,catalogSinapiQuery,25);
+    const linked=selectedCatalogService.sinapiComposition;
+    if(usableSinapiComposition(linked) && !catalogSinapiQuery.trim() &&
+       !results.some(c=>compositionIdentity(c)===compositionIdentity(linked)))return [linked,...results].slice(0,25);
+    return results;
+  },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
+  const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
+  const selectedCatalogQuantity=decimalFromInput(catalogQuantity);
+  const catalogSimulation=useMemo(()=>{
+    if(!current||!selectedCatalogComposition||!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0)
+      return {result:null as ReturnType<typeof simulateCrewForQuote>|null,error:''};
+    try{
+      return {result:simulateCrewForQuote(selectedCatalogComposition,selectedCatalogQuantity,
+        current.hoursPerDay,current.efficiency,catalogTargetDays.trim()?Number(catalogTargetDays):undefined),error:''};
+    }catch(err){return {result:null,error:err instanceof Error?err.message:'Quantidade ou equipe inválida.'};}
+  },[current,selectedCatalogComposition,selectedCatalogQuantity,catalogTargetDays]);
   const change=(patch:Partial<WorkSchedule>)=>{if(current)updateSchedule({...current,...patch,updatedAt:new Date().toISOString()});};
   const addHoliday=()=>{
     if(!current)return;
@@ -172,6 +220,44 @@ export const ScheduleView:React.FC=()=>{
     change({tasks:[...current.tasks,newTask]});
     setActiveQuoteItem('');setError('');
     setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
+  };
+  const appendFromCatalog=()=>{
+    if(!current||!selectedCatalogService||!selectedCatalogComposition){
+      setError('Selecione um serviço cadastrado e uma composição SINAPI para continuar.');return;
+    }
+    if(!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0){
+      setError('Informe uma quantidade válida na unidade da composição SINAPI.');return;
+    }
+    if(current.tasks.length>=180){setError('Limite de 180 serviços por cronograma.');return;}
+    let composition:SinapiComposition;
+    try {
+      if(usableSinapiComposition(selectedCatalogComposition)){
+        composition=selectedCatalogComposition;
+      }else {
+        if(!regionalUF||!regionalRegime||!validCompetence(reference.trim()))
+          throw Error('Informe a competência, UF e encargos da planilha antes de usar esta composição.');
+        composition=withSinapiProvenance(selectedCatalogComposition,{
+          reference:reference.trim(),uf:regionalUF,regime:regionalRegime
+        });
+      }
+      // A equipe de 1 pessoa por função é uma SIMULAÇÃO, revisável na etapa.
+      const simulated=simulateCrewForQuote(composition,selectedCatalogQuantity,
+        current.hoursPerDay,current.efficiency,catalogTargetDays.trim()?Number(catalogTargetDays):undefined);
+      const task:ScheduleTask={
+        id:newId('etapa'),composition,quantity:selectedCatalogQuantity,crew:simulated.crew,
+        notes:`Serviço do catálogo: ${selectedCatalogService.name} (ref. ${selectedCatalogService.id}).`,
+        dependencies:current.scheduleMode==='dependencias' && current.tasks.length
+          ?[current.tasks[current.tasks.length-1].id]:[]
+      };
+      change({tasks:[...current.tasks,task]});
+      if(!selectedCatalogService.sinapiComposition ||
+         compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition))
+        updateCatalogItem({...selectedCatalogService,sinapiComposition:composition});
+      setError('');
+      setCatalogNotice(`Etapa criada: ${selectedCatalogService.name} → SINAPI ${composition.code}. A composição foi salva no catálogo para reutilização. Revise a equipe simulada e a quantidade.`);
+      setCatalogQuantity('');
+      setCatalogChoice('');
+    }catch(err){setError(err instanceof Error?err.message:'Não foi possível associar o serviço SINAPI.');}
   };
   const changeTask=(task:ScheduleTask)=>change({tasks:current!.tasks.map(t=>t.id===task.id?task:t)});
   const recordMeasurement=(task:ScheduleTask)=>{
