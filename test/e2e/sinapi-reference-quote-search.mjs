@@ -24,7 +24,11 @@ const compositions=[
    {code:'88264',role:'ELETRICISTA COM ENCARGOS COMPLEMENTARES',hoursPerUnit:10.8149679},
    {code:'88247',role:'AUXILIAR DE ELETRICISTA COM ENCARGOS COMPLEMENTARES',hoursPerUnit:5.5636861},
    {code:'88286',role:'MOTORISTA OPERADOR DE MUNCK COM ENCARGOS COMPLEMENTARES',hoursPerUnit:1.0596801},
-   {code:'88316',role:'SERVENTE COM ENCARGOS COMPLEMENTARES',hoursPerUnit:0.098499893}]}
+   {code:'88316',role:'SERVENTE COM ENCARGOS COMPLEMENTARES',hoursPerUnit:0.098499893}]},
+ {code:'91991',description:'TOMADA ALTA DE EMBUTIR (1 MÓDULO), 2P+T 20 A, SEM SUPORTE E SEM PLACA - FORNECIMENTO E INSTALAÇÃO. AF_03/2023',
+  unit:'UN',reference:ref,sourceFile,sourceSheet,labor:[
+   {code:'88264',role:'ELETRICISTA COM ENCARGOS COMPLEMENTARES',hoursPerUnit:0.511},
+   {code:'88247',role:'AUXILIAR DE ELETRICISTA COM ENCARGOS COMPLEMENTARES',hoursPerUnit:0.511}]}
 ];
 const quote={id:'qa-orcamento-sinapi',number:'#QA-909',clientId:'qa',clientName:'Cliente teste',
  status:'rascunho',date:'2026-10-10',validUntil:'2026-12-20',
@@ -72,7 +76,8 @@ await page.route('**/rest/v1/rpc/orcapro_find_sinapi',route=>{
  // retorna descrições oficiais "ENTRADA DE ENERGIA ELÉTRICA MONOFÁSICA".
  const hits=q.includes('chuveiro')||q.includes('100860')?[compositions[0]]:
    q.includes('padrao')||q.includes('padrão')||q.includes('monofas')||q.includes('10149')
-    ?compositions.slice(1):q.includes('91996')?[{...compositions[0],code:'91996',description:'TOMADA MÉDIA'}]:[];
+    ?compositions.slice(1,3):q.includes('eletrica')||q.includes('tomada')||q.includes('91991')
+      ?[compositions[3]]:q.includes('91996')?[{...compositions[0],code:'91996',description:'TOMADA MÉDIA'}]:[];
  return route.fulfill({status:200,headers,body:JSON.stringify(hits)});
 });
 await page.route('**/api/sinapi-search?*',route=>route.fulfill({
@@ -85,6 +90,14 @@ try{
  await region.waitFor();
  await page.getByText(/9.136 composições persistidas no Supabase/).waitFor({timeout:10000});
  await region.getByRole('button',{name:/Chuveiro/}).click();
+ // Só elétrica: a composição 100860, embora se chame chuveiro elétrico,
+ // NÃO pode aparecer como elétrica: exige encanador no Analítico.
+ await region.getByLabel('Especialidade para Chuveiro').selectOption('eletrica');
+ await region.getByText(/1 composição\(ões\) da biblioteca SINAPI/).waitFor({timeout:13000});
+ let catOptions=region.getByLabel(/Confirme a composição adequada/);
+ await catOptions.locator('option').filter({hasText:/^91991/}).waitFor({state:'attached'});
+ assert.equal(await catOptions.locator('option').filter({hasText:/^100860/}).count(),0);
+ await region.getByLabel('Especialidade para Chuveiro').selectOption('todas');
  await region.getByText(/1 composição\(ões\) da biblioteca SINAPI/).waitFor({timeout:13000});
  let options=region.getByLabel(/Confirme a composição adequada/);
  let entry=options.locator('option').filter({hasText:/^100860/});
@@ -127,6 +140,9 @@ try{
  await page.waitForTimeout(700);
  assert.ok(queries.some(q=>q.includes('chuveiro'))&&queries.some(q=>q.includes('monof'))&&queries.some(q=>q.includes('100860')),
    'Consultas independentes devem chegar ao banco: '+JSON.stringify(queries));
+ // Obra hidráulica já executada: preservar HH históricas, mas não exigir
+ // encanador na equipe ainda necessária.
+ store.payload.schedules[0].tasks[0].progress=[{id:'hidraulica-realizada',date:'2026-10-10',quantity:22,recordedAt:now,note:'Hidráulica concluída'}];
  // Recuperar tarefa criada antes como "sem HH": mantém id, quantidade e progresso.
  store.payload.schedules[0].tasks.push({
   id:'etapa-pendente-qa',quantity:1,crew:{},quoteItemId:undefined,
@@ -155,6 +171,32 @@ try{
  assert.equal(restored.quantity,1);
  assert.equal(store.payload.schedules[0].tasks[0].quoteItemId,'qa-chuveiro');
  assert.equal(store.payload.schedules[0].tasks[1].quoteItemId,'qa-mono');
+ const remaining=page.getByRole('region',{name:'Mão de obra ainda necessária'});
+ await remaining.getByText(/Serviços totalmente medidos como executados/).waitFor();
+ assert.equal(await remaining.locator('strong').filter({hasText:/ENCANADOR/}).count(),0,
+   'Hidráulica concluída não deve exigir encanador no quadro de HH restantes');
+ assert.equal(store.payload.schedules[0].tasks[0].progress[0].quantity,22,
+   'Medição de hidráulica concluída continua íntegra');
+ // Complementar serviço da obra por especialidade sem duplicar o mesmo item financeiro.
+ await region.getByRole('button',{name:/Chuveiro/}).click();
+ await region.getByRole('button',{name:'Adicionar outra especialidade sem duplicar valor financeiro'}).click();
+ await global.getByLabel('Especialidade SINAPI do catálogo').selectOption('eletrica');
+ await global.getByLabel('Buscar composição SINAPI para o serviço').fill('tomada');
+ const electrical=global.getByRole('group',{name:'Escolher composição SINAPI'});
+ await electrical.getByRole('button',{name:/SINAPI 91991/}).waitFor({timeout:13000});
+ assert.equal(await electrical.getByRole('button',{name:/SINAPI 100860/}).count(),0);
+ await electrical.getByRole('button',{name:/SINAPI 91991/}).click();
+ await global.getByRole('button',{name:'Adicionar composição ao cronograma'}).click();
+ await page.waitForTimeout(1000);
+ assert.equal(store.payload.schedules[0].tasks.length,4);
+ const electricalTask=store.payload.schedules[0].tasks.at(-1);
+ assert.equal(electricalTask.composition.code,'91991');
+ assert.equal(electricalTask.quoteItemId,undefined,'Etapa independente não pode duplicar valor financeiro');
+ assert.ok(electricalTask.composition.labor.every(x=>!x.role.includes('ENCANADOR')));
+ assert.deepEqual(Object.keys(electricalTask.crew).sort(),[
+   '88247:AUXILIAR DE ELETRICISTA COM ENCARGOS COMPLEMENTARES',
+   '88264:ELETRICISTA COM ENCARGOS COMPLEMENTARES'
+ ]);
  assert.deepEqual(errors,[]);
  console.log('PASS SINAPI 09/2026 no Android: 9.136 no Supabase; orçamento 22 chuveiros/6 padrões; restauração de HH em etapa pendente; vínculos intactos');
 } finally {await browser.close();}

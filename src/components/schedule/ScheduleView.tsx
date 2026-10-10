@@ -21,6 +21,7 @@ import {searchSinapiOnline,onlineSinapiPendingComposition,type SinapiOnlineResul
 import { ReferencePreferences } from '../references/ReferencePreferences';
 import {costReferenceName,validReferenceSettings} from '../../utils/constructionReferences';
 import { EditableNumericInput } from '../common/EditableNumericInput';
+import {categoryLabel,categoryOfSinapi,categorySearchHint,matchesSinapiCategory,sinapiCategoryOptions,type SinapiCategoryFilter} from '../../utils/sinapiCategories';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -38,7 +39,7 @@ function exportModelCSV(){
 }
 function exportScheduleCSV(schedule:WorkSchedule){
   const results=estimateSchedule(schedule);
-  const data=[['Composição','Descrição','Unidade','Quantidade','HH totais','Dias úteis','Início','Término','Equipe por profissão','Origem SINAPI','Quantidade executada','Avanço (%)'],...results.entries.map(x=>[x.task.composition.code,x.task.composition.description,x.task.composition.unit,String(x.task.quantity),String(x.totalHH),x.days===null?'Pendente':String(x.days),x.start||'',x.end||'',x.labor.map(l=>`${l.role}: ${l.workers} pessoa(s)`).join(' | '),`${x.task.composition.sourceFile} - ${x.task.composition.sourceSheet} - ${sinapiOriginLabel(x.task.composition)}`,String(measuredQuantity(x.task)),String(progressPercent(x.task)??'')])];
+  const data=[['Composição','Especialidade','Descrição','Unidade','Quantidade','HH totais','Dias úteis','Início','Término','Equipe por profissão','Origem SINAPI','Quantidade executada','Avanço (%)'],...results.entries.map(x=>[x.task.composition.code,categoryLabel(x.task.composition),x.task.composition.description,x.task.composition.unit,String(x.task.quantity),String(x.totalHH),x.days===null?'Pendente':String(x.days),x.start||'',x.end||'',x.labor.map(l=>`${l.role}: ${l.workers} pessoa(s)`).join(' | '),`${x.task.composition.sourceFile} - ${x.task.composition.sourceSheet} - ${sinapiOriginLabel(x.task.composition)}`,String(measuredQuantity(x.task)),String(progressPercent(x.task)??'')])];
   const csv='\uFEFF'+data.map(row=>row.map(csvSafe).join(';')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=`orcapro-cronograma-${schedule.id}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -63,6 +64,8 @@ export const ScheduleView:React.FC=()=>{
   const [selectedQuoteItem,setSelectedQuoteItem]=useState('');
   const [activeQuoteItem,setActiveQuoteItem]=useState('');
   const [quoteSearch,setQuoteSearch]=useState<Record<string,string>>({});
+  const [quoteCategory,setQuoteCategory]=useState<Record<string,SinapiCategoryFilter>>({});
+  const [catalogCategory,setCatalogCategory]=useState<SinapiCategoryFilter>('todas');
   const [quoteComposition,setQuoteComposition]=useState<Record<string,string>>({});
   const [quoteTargetDays,setQuoteTargetDays]=useState<Record<string,string>>({});
   const [measurementInput,setMeasurementInput]=useState<Record<string,string>>({});
@@ -111,6 +114,36 @@ export const ScheduleView:React.FC=()=>{
   const current=resolveScheduleSelection(schedules,selectedScheduleId);
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
   const staffing=useMemo(()=>report?peakCrewDemand(report):null,[report]);
+  // O quadro de equipe ainda necessária não conta serviços medidos como
+  // concluídos, mas mantém HH históricas e preços intactos no cronograma.
+  const remainingLabor=useMemo(()=>{
+    const roles=new Map<string,{code:string;role:string;hh:number}>();
+    let hh=0,finished=0,withoutHH=0;
+    for(const entry of report?.entries||[]) {
+      if(!Number.isFinite(entry.task.quantity)||entry.task.quantity<=0){withoutHH++;continue;}
+      const remainingQuantity=Math.max(0,entry.task.quantity-measuredQuantity(entry.task));
+      if(remainingQuantity<=0.000001){finished++;continue;}
+      if(!entry.labor.length){withoutHH++;continue;}
+      const factor=remainingQuantity/entry.task.quantity;
+      for(const l of entry.labor){
+        const key=`${l.code}:${l.role}`;
+        const hours=l.hours*factor;
+        const previous=roles.get(key);
+        roles.set(key,{code:l.code,role:l.role,hh:(previous?.hh||0)+hours});
+        hh+=hours;
+      }
+    }
+    return {hh,finished,withoutHH,roles:[...roles.values()].sort((a,b)=>b.hh-a.hh)};
+  },[report]);
+  const categorySummary=useMemo(()=>{
+    const grouped=new Map<string,{label:string;steps:number;hh:number}>();
+    for(const entry of report?.entries||[]){
+      const id=categoryOfSinapi(entry.task.composition);
+      const old=grouped.get(id);
+      grouped.set(id,{label:categoryLabel(entry.task.composition),steps:(old?.steps||0)+1,hh:(old?.hh||0)+entry.totalHH});
+    }
+    return [...grouped.values()];
+  },[report]);
   // Um grupo de 15 dias úteis por vez: datas REAIS legíveis, mesmo em obras longas.
   // Mesmo com etapas pendentes, mostre as datas das etapas já dimensionadas.
   // Não atribua término GLOBAL à obra enquanto houver qualquer pendência.
@@ -125,10 +158,15 @@ export const ScheduleView:React.FC=()=>{
   const attached=quotes.find(q=>q.id===current?.quoteId);
   const physical=current?physicalProgress(current):null;
   const activeQuoteTerm=activeQuoteItem
-    ? quoteSearch[activeQuoteItem]?.trim()||attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
+    ? quoteSearch[activeQuoteItem]?.trim() ||
+      (quoteCategory[activeQuoteItem]&&quoteCategory[activeQuoteItem]!=='todas'
+        ? categorySearchHint(quoteCategory[activeQuoteItem]):'') ||
+      attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
     : '';
   // Consultas independentes: abrir Configurar no orçamento não pode bloquear a busca livre do catálogo.
-  const savedLibraryTerm=(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim()).slice(0,100);
+  const savedLibraryTerm=(catalogSinapiQuery.trim() ||
+    (catalogCategory!=='todas'?categorySearchHint(catalogCategory):'') ||
+    catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim() || search.trim()).slice(0,100);
   useEffect(()=>{
     if(!session)return;
     let cancelled=false;
@@ -164,7 +202,9 @@ export const ScheduleView:React.FC=()=>{
     return()=>{window.clearTimeout(id);controller.abort();};
   },[session?.user.id,session?.access_token,activeQuoteItem,activeQuoteTerm,savedLibraryCount]);
   const physicalMoney=current?physicalFinancial(current,attached):null;
-  const filtered=useMemo(()=>[...imported,...savedCompositions,...quoteSavedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,quoteSavedCompositions,search]);
+  const filtered=useMemo(()=>[...imported,...savedCompositions,...quoteSavedCompositions]
+    .filter(c=>matchesSinapiCategory(c,catalogCategory)&&`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase()))
+    .slice(0,80),[imported,savedCompositions,quoteSavedCompositions,search,catalogCategory]);
   const selected=[...imported,...savedCompositions,...quoteSavedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
   const catalogServices=useMemo(()=>{
     const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -213,20 +253,22 @@ export const ScheduleView:React.FC=()=>{
   const catalogCandidates=useMemo(()=>{
     // Pesquisa SINAPI funciona SEM exigir seleção prévia no catálogo.
     // Quando não há termo nem serviço escolhido, não despeja milhares de itens no Android.
-    if(!selectedCatalogService && !catalogSinapiQuery.trim())return [];
+    if(!selectedCatalogService && !catalogSinapiQuery.trim() && catalogCategory==='todas')return [];
     const target=selectedCatalogService||{name:'',unit:''};
     const results=findCatalogSinapiCandidates(target,knownCompositions,catalogSinapiQuery,50);
     // A consulta SQL reconhece termos comerciais como "padrão monofásico" e
     // devolve "ENTRADA DE ENERGIA ELÉTRICA MONOFÁSICA". Não filtre novamente pelo nome.
-    const ranked=[...savedCompositions.filter(isAnalyticalSinapi),...results].filter((c,i,all)=>
-      all.findIndex(other=>compositionIdentity(other)===compositionIdentity(c))===i).slice(0,50);
+    const ranked=[...savedCompositions.filter(isAnalyticalSinapi),...results]
+      .filter(c=>matchesSinapiCategory(c,catalogCategory))
+      .filter((c,i,all)=>all.findIndex(other=>compositionIdentity(other)===compositionIdentity(c))===i)
+      .slice(0,50);
     const linked=selectedCatalogService?.sinapiComposition;
-    if(usableSinapiComposition(linked) && !catalogSinapiQuery.trim() &&
+    if(usableSinapiComposition(linked) && matchesSinapiCategory(linked,catalogCategory) && !catalogSinapiQuery.trim() &&
        !ranked.some(c=>compositionIdentity(c)===compositionIdentity(linked)))
       return [linked,...ranked].slice(0,50);
     return ranked;
-  },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
-  const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
+  },[selectedCatalogService,knownCompositions,catalogSinapiQuery,catalogCategory,savedCompositions]);
+  const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice && matchesSinapiCategory(c,catalogCategory));
   const filteredOnlineResults=onlineResults.filter(row=>
     !knownCompositions.some(c=>c.code===row.code && sameServiceUnit(c.unit,row.unit)));
   const selectedCatalogQuantity=decimalFromInput(catalogQuantity);
@@ -331,7 +373,7 @@ export const ScheduleView:React.FC=()=>{
     const stored=savedSinapiForQuote(item,catalog);
     const chosen=knownCompositions.find(c=>compositionIdentity(c)===key)
       || (stored && compositionIdentity(stored)===key?stored:undefined);
-    if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
+    if(!chosen || !sameServiceUnit(chosen.unit,item.unit) || !matchesSinapiCategory(chosen,quoteCategory[item.id]||'todas')){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
     }
     const sourceMonth=chosen.reference||reference.trim();
@@ -353,13 +395,14 @@ export const ScheduleView:React.FC=()=>{
     };
     change({tasks:[...current.tasks,newTask]});
     const origin=item.catalogItemId?catalog.find(c=>c.id===item.catalogItemId):undefined;
-    if(origin?.type==='servico' && (!origin.sinapiComposition || compositionIdentity(origin.sinapiComposition)!==compositionIdentity(composition)))
+    if(origin?.type==='servico' && (!origin.sinapiComposition || categoryOfSinapi(origin.sinapiComposition)===categoryOfSinapi(composition)) &&
+      (!origin.sinapiComposition || compositionIdentity(origin.sinapiComposition)!==compositionIdentity(composition)))
       updateCatalogItem({...origin,sinapiComposition:composition});
     setActiveQuoteItem('');setError('');
     setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
   };
   const appendFromCatalog=()=>{
-    if(!current||!selectedCatalogComposition){
+    if(!current||!selectedCatalogComposition || !matchesSinapiCategory(selectedCatalogComposition,catalogCategory)){
       setError('Selecione uma composição SINAPI para adicionar ao cronograma.');return;
     }
     if(!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0){
@@ -391,13 +434,19 @@ export const ScheduleView:React.FC=()=>{
           ?[current.tasks[current.tasks.length-1].id]:[]
       };
       change({tasks:[...current.tasks,task]});
+      // Um serviço comercial pode envolver hidráulica e elétrica distintas.
+      // Não sobrescrever associação anterior de outra especialidade.
       if(selectedCatalogService && (!selectedCatalogService.sinapiComposition ||
-         compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition)))
+         categoryOfSinapi(selectedCatalogService.sinapiComposition)===categoryOfSinapi(composition)) &&
+         (!selectedCatalogService.sinapiComposition ||
+          compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition)))
         updateCatalogItem({...selectedCatalogService,sinapiComposition:composition});
       setError('');
+      const previousCatalogComposition=selectedCatalogService?.sinapiComposition;
+      const canUpdateCatalog=!!selectedCatalogService && (!previousCatalogComposition || categoryOfSinapi(previousCatalogComposition)===categoryOfSinapi(composition));
       setCatalogNotice(selectedCatalogService
-        ?`Etapa criada: ${selectedCatalogService.name} → SINAPI ${composition.code}. A composição foi salva no catálogo para reutilização. Revise equipe e quantidade.`
-        :`Etapa SINAPI ${composition.code} criada sem vínculo com catálogo ou orçamento. Revise equipe e quantidade.`);
+        ?`Etapa criada: ${selectedCatalogService.name} → SINAPI ${composition.code} (${categoryLabel(composition)}). ${canUpdateCatalog?'Composição associada ao catálogo.':'Composição existente de outra especialidade preservada no catálogo.'} Revise equipe, unidade e quantidade.`
+        :`Etapa SINAPI ${composition.code} (${categoryLabel(composition)}) criada sem vínculo financeiro. Revise equipe e quantidade.`);
       setCatalogQuantity('');
       setCatalogChoice('');
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível associar o serviço SINAPI.');}
@@ -522,6 +571,13 @@ export const ScheduleView:React.FC=()=>{
         ? `Biblioteca SINAPI recuperada: ${savedLibraryCount.toLocaleString('pt-BR')} composições persistidas no Supabase.`
         : 'Verificando biblioteca SINAPI persistida no Supabase…'}</p>
       {libraryStatus==='error'&&<p role="alert" className="text-xs text-rose-300">A busca SINAPI não pôde consultar sua base: {libraryError}</p>}
+      <label className="block text-xs font-semibold text-slate-200">Filtrar composições por especialidade
+        <select aria-label="Especialidade SINAPI do catálogo" className={`${control} mt-1`} value={catalogCategory}
+          onChange={e=>{setCatalogCategory(e.target.value as SinapiCategoryFilter);setCatalogChoice('');setSelectedOnline(null);setCatalogSinapiQuery('');}}>
+          {sinapiCategoryOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
+      </label>
+      <p className="text-[11px] text-slate-300">A classificação utiliza as profissões presentes no Analítico. “Elétrica” exige eletricista e exclui encanador; “Hidráulica” exige encanador e exclui eletricista. Composições com ambos aparecem em “Mista”. Nenhum coeficiente oficial será removido.</p>
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="min-w-0 space-y-2">
           <label className="block text-xs font-semibold text-slate-200">1. Serviço do catálogo (opcional)
@@ -574,15 +630,15 @@ export const ScheduleView:React.FC=()=>{
                     onClick={()=>{setCatalogChoice(compositionIdentity(c));if(c.reference)setReference(c.reference);setCatalogNotice('');setError('');}}
                     className={`w-full rounded-xl border p-2.5 text-left ${catalogChoice===compositionIdentity(c)?'border-orange-500/70 bg-orange-500/10':'border-white/10 bg-[#0b0e15] hover:border-orange-500/30'}`}>
                     <span className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      <strong className="text-orange-200">SINAPI {c.code} · {c.unit}</strong>
+                      <strong className="text-orange-200">SINAPI {c.code} · {c.unit} · {categoryLabel(c)}</strong>
                       <span className="text-emerald-300">{fmt(c.labor.reduce((n,l)=>n+l.hoursPerUnit,0),4)} HH/{c.unit}</span>
                     </span>
                     <span className="mt-1 block text-xs text-slate-100">{c.description}</span>
                     <small className="mt-1 block text-[10px] text-slate-400">{c.sourceFile} · {sinapiOriginLabel(c)}</small>
                   </button>)}
-                  {!catalogCandidates.length && catalogSinapiQuery.trim() &&
+                  {!catalogCandidates.length && (catalogSinapiQuery.trim() || catalogCategory!=='todas') &&
                     <p className="rounded-xl border border-dashed border-white/15 p-3 text-xs text-slate-300">
-                      Não encontrei “{catalogSinapiQuery}” nas composições carregadas. Confira o código, use uma palavra principal ou carregue outra planilha SINAPI.
+                      Nenhuma composição analítica da especialidade selecionada foi encontrada nessa consulta. Pesquise por código ou termos técnicos como tomada, disjuntor, cabo ou eletroduto. Confira as profissões antes de escolher.
                     </p>}
                 </div>
               </>}
@@ -594,7 +650,7 @@ export const ScheduleView:React.FC=()=>{
           <h3 className="text-xs font-bold text-sky-200">Consulta online de composições SINAPI</h3>
           <span className="text-[10px] text-slate-400">SINPRES — serviço independente da CAIXA/IBGE</span>
         </div>
-        <p className="text-[11px] leading-relaxed text-slate-300">Digite uma descrição ou código no campo acima. A consulta externa mostra código, descrição e unidade; <strong>não apresenta coeficientes HH verificados</strong>. Caso escolha uma dessas composições, a etapa ficará pendente de dimensionamento.</p>
+        <p className="text-[11px] leading-relaxed text-slate-300">Digite uma descrição ou código no campo acima. A consulta externa mostra código, descrição e unidade; <strong>não apresenta coeficientes HH verificados nem profissão classificada</strong>. Não use essa lista como confirmação da especialidade. Etapas criadas aqui ficam pendentes de dimensionamento.</p>
         {onlineStatus==='idle'&&<p className="text-xs text-slate-400">Digite um nome ou código para consultar o catálogo online.</p>}
         {onlineStatus==='loading'&&<p role="status" className="text-xs text-sky-200">Buscando “{onlineTerm}” no catálogo online…</p>}
         {onlineStatus==='error'&&<p role="alert" className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">Consulta online indisponível: {onlineError} Você pode continuar com uma planilha importada.</p>}
@@ -624,6 +680,7 @@ export const ScheduleView:React.FC=()=>{
         <div>
           <h3 className="text-xs font-bold text-orange-200">3. Confirmar composição e quantidade</h3>
           <p className="mt-1 text-xs text-slate-200">{selectedCatalogService?.name||'Etapa independente'} → <strong>{selectedCatalogComposition.code}</strong> · {selectedCatalogComposition.description}</p>
+          <p className="mt-1 text-[11px] text-emerald-200">Especialidade comprovada pelo Analítico: {categoryLabel(selectedCatalogComposition)}. Profissões: {selectedCatalogComposition.labor.map(l=>l.role).join(' · ')}.</p>
           {selectedCatalogService && !sameServiceUnit(selectedCatalogService.unit,selectedCatalogComposition.unit)&&<p className="mt-2 rounded-lg border border-amber-500/25 p-2 text-[11px] leading-relaxed text-amber-200">A unidade do catálogo é “{selectedCatalogService.unit}”, mas a composição usa “{selectedCatalogComposition.unit}”. Informe abaixo a quantidade na <strong>unidade SINAPI</strong>. Esta etapa não receberá vínculo financeiro automático com o orçamento, para não confundir valores.</p>}
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -672,14 +729,15 @@ export const ScheduleView:React.FC=()=>{
         const remembered=savedSinapiForQuote(item,catalog);
         const options=remembered && !knownCompositions.some(c=>compositionIdentity(c)===compositionIdentity(remembered))
           ? [...knownCompositions,remembered]:knownCompositions;
+        const selectedCategory=quoteCategory[item.id]||'todas';
         const suggestions=expanded?findCatalogSinapiCandidates(item,options,query,20)
-          .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
+          .filter(c=>sameServiceUnit(c.unit,item.unit)&&matchesSinapiCategory(c,selectedCategory)):[];
         const matches=[...(expanded?quoteSavedCompositions.filter(c=>
-          isAnalyticalSinapi(c)&&sameServiceUnit(c.unit,item.unit)):[]),...suggestions]
+          isAnalyticalSinapi(c)&&sameServiceUnit(c.unit,item.unit)&&matchesSinapiCategory(c,selectedCategory)):[]),...suggestions]
           .filter((c,i,all)=>all.findIndex(other=>compositionIdentity(c)===compositionIdentity(other))===i)
           .slice(0,40);
         const selectedKey=quoteComposition[item.id]||'';
-        const chosen=options.find(c=>compositionIdentity(c)===selectedKey);
+        const chosen=options.find(c=>compositionIdentity(c)===selectedKey&&matchesSinapiCategory(c,selectedCategory));
         if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
         const targetInput=(quoteTargetDays[item.id]||'').trim();
         const targetDays=targetInput?Number(targetInput):undefined;
@@ -693,11 +751,28 @@ export const ScheduleView:React.FC=()=>{
             <span className={`shrink-0 text-[11px] ${already?'text-emerald-300':'text-orange-300'}`}>{already?'Vinculado ✓':expanded?'Fechar':'Configurar →'}</span>
           </button>
           {expanded && !already && <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+            <label className="block text-[11px] text-slate-300">Parte do serviço que ainda será executada
+              <select aria-label={`Especialidade para ${item.name}`} className={`${control} mt-1`}
+                value={quoteCategory[item.id]||'todas'}
+                onChange={e=>{setQuoteCategory(old=>({...old,[item.id]:e.target.value as SinapiCategoryFilter}));
+                  setQuoteComposition(old=>({...old,[item.id]:''}));setQuoteSearch(old=>({...old,[item.id]:''}));}}>
+                {sinapiCategoryOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <p className="text-[11px] text-amber-200">Exemplo: se a hidráulica do chuveiro já foi executada, escolha “Elétrica”. A composição 100860 possui encanador e NÃO representa somente a ligação elétrica. Selecione a composição elétrica efetivamente necessária, com unidade e escopo corretos.</p>
+            {(quoteCategory[item.id]==='eletrica'||quoteCategory[item.id]==='hidraulica')&&<div className="flex flex-wrap gap-2" role="group" aria-label={`Sugestões de busca para ${item.name}`}>
+              {(quoteCategory[item.id]==='eletrica'?['tomada','disjuntor','cabo de cobre','eletroduto']:['tubo','conexão','registro','chuveiro']).map(term=><button type="button" key={term}
+                className="rounded-lg border border-sky-500/30 px-2.5 py-2 text-[11px] text-sky-200"
+                onClick={()=>{setQuoteSearch(old=>({...old,[item.id]:term}));setQuoteComposition(old=>({...old,[item.id]:''}));}}>
+                {term}
+              </button>)}
+            </div>}
             <label className="block text-[11px] text-slate-400">Buscar composição por nome ou código SINAPI
               <input className={`${control} mt-1`} value={query} onChange={e=>setQuoteSearch(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: alvenaria, drywall, porcelanato, pintura ou código"/>
             </label>
              <button type="button" onClick={()=>{
-               setCatalogSinapiQuery(query.trim()||item.name);
+               setCatalogCategory(quoteCategory[item.id]||'todas');
+               setCatalogSinapiQuery(query.trim() || (quoteCategory[item.id]&&quoteCategory[item.id]!=='todas'?categorySearchHint(quoteCategory[item.id]):item.name));
                setCatalogQuoteItemId(item.id);
                setCatalogQuantity(String(item.quantity));
                setCatalogChoice('');
@@ -709,7 +784,7 @@ export const ScheduleView:React.FC=()=>{
             <label className="block text-[11px] text-slate-400">Confirme a composição adequada — apenas unidade {item.unit}
               <select className={`${control} mt-1`} value={selectedKey} onChange={e=>{setQuoteComposition(old=>({...old,[item.id]:e.target.value}));const found=options.find(c=>compositionIdentity(c)===e.target.value);if(found?.reference)setReference(found.reference);}}>
                 <option value="">Selecione uma composição SINAPI</option>
-                {matches.map(c=><option key={compositionIdentity(c)} value={compositionIdentity(c)}>{c.code} · {c.reference||"?"} · {c.description.slice(0,100)}</option>)}
+                {matches.map(c=><option key={compositionIdentity(c)} value={compositionIdentity(c)}>{c.code} · {categoryLabel(c)} · {c.reference||"?"} · {c.description.slice(0,85)}</option>)}
               </select>
             </label>
              {quoteLibraryStatus==='loading'&&<p role="status" className="text-xs text-orange-200">Consultando biblioteca SINAPI salva para “{activeQuoteTerm}”…</p>}
@@ -717,7 +792,7 @@ export const ScheduleView:React.FC=()=>{
              {quoteLibraryStatus==='ready'&&<p role="status" className="text-[11px] text-emerald-200">{quoteSavedCompositions.length} composição(ões) da biblioteca SINAPI encontradas por “{activeQuoteTerm}”. Selecione o código e confira a descrição técnica.</p>}
              {!matches.length && quoteLibraryStatus==='ready' && <p className="text-[11px] text-amber-200">Nenhuma composição com unidade compatível “{item.unit}” para o termo. Experimente “entrada energia monofásica”, “chuveiro”, “tomada” ou o código SINAPI. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
-              <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
+              <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code} · {categoryLabel(chosen)}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
               <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet} · {chosen.reference||'competência pendente'}</p><p className="text-[10px] text-amber-200">UF e regime indicam a obra e os encargos declarados, não certificam a origem regional deste arquivo. Os coeficientes HH são referenciais.</p>
               {!usableSinapiComposition(chosen)&&<div className="space-y-2 rounded-lg border border-orange-500/20 bg-[#101824] p-3">
@@ -749,7 +824,13 @@ export const ScheduleView:React.FC=()=>{
               <p className="text-[10px] text-amber-200">A simulação não comprova disponibilidade de profissionais, materiais ou equipamentos. Em serviços paralelos, ajuste equipes compartilhadas e dependências. Revise prazo e execução antes de enviar ao cliente.</p>
             </div>}
           </div>}
-          {expanded && already && <p className="mt-2 text-[11px] text-emerald-300">Este item já está ligado à composição {already.composition.code}. A equipe pode ser ajustada na etapa abaixo.</p>}
+          {expanded && already && <div className="mt-2 space-y-2">
+            <p className="text-[11px] text-emerald-300">Este item está vinculado à composição {already.composition.code} ({categoryLabel(already.composition)}). A equipe pode ser ajustada na etapa abaixo.</p>
+            <button type="button" className="min-h-10 rounded-lg border border-sky-500/40 px-3 py-2 text-xs text-sky-200"
+              onClick={()=>{setCatalogCategory('todas');setCatalogSelectedId('');setCatalogSinapiQuery('');setCatalogChoice('');setCatalogQuoteItemId('');setCatalogQuantity(String(item.quantity));setCatalogNotice('Adicione uma etapa técnica separada, sem novo vínculo financeiro para não duplicar o valor do orçamento. Confirme o serviço e sua unidade.');document.getElementById('orcapro-sinapi-lookup')?.scrollIntoView({behavior:'smooth',block:'start'});}}>
+              Adicionar outra especialidade sem duplicar valor financeiro
+            </button>
+          </div>}
         </div>;
       })}
     </section>}
@@ -787,6 +868,22 @@ export const ScheduleView:React.FC=()=>{
       </section>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
+      {remainingLabor.finished>0 && <section aria-label="Mão de obra ainda necessária" className={`${tile} space-y-2 p-4`}>
+        <h2 className="text-sm font-bold">Mão de obra que ainda falta executar</h2>
+        <p className="text-xs text-slate-200">Serviços totalmente medidos como executados: <strong>{remainingLabor.finished}</strong>. HH restantes conhecidas: <strong>{fmt(remainingLabor.hh,2)} HH</strong>{remainingLabor.withoutHH>0?` · ${remainingLabor.withoutHH} etapa(s) sem coeficientes`:''}.</p>
+        <div className="grid gap-2 sm:grid-cols-2">{remainingLabor.roles.map(l=><div key={`${l.code}:${l.role}`} className="rounded-lg bg-white/5 p-2.5 text-[11px]">
+          <strong className="text-sky-200">{l.role}</strong><span className="block text-slate-300">{fmt(l.hh,2)} HH ainda previstas</span>
+        </div>)}</div>
+        <p className="text-[11px] text-amber-200">Por exemplo, quando a hidráulica estiver concluída e registrada na medição da etapa, a função encanador deixa de aparecer nas HH restantes. Não apagamos suas HH históricas. A parcela restante é proporcional à quantidade medida; confirme o trabalho efetivamente realizado.</p>
+      </section>}
+      {categorySummary.length>0 && <section className={`${tile} space-y-2 p-4`} aria-label="Resumo do cronograma por especialidade">
+        <h2 className="text-sm font-bold">Frentes de trabalho por especialidade</h2>
+        <div className="grid gap-2 sm:grid-cols-2">{categorySummary.map(row=><div key={row.label} className="rounded-lg border border-white/10 p-3">
+          <strong className="block text-xs text-slate-100">{row.label}</strong>
+          <span className="text-[11px] text-slate-300">{row.steps} etapa(s) · {fmt(row.hh,2)} HH</span>
+        </div>)}</div>
+        <p className="text-[11px] text-amber-200">Para evitar dupla contagem, cada composição é contabilizada apenas na sua própria especialidade. Atividades mistas mantêm todas as profissões previstas no Analítico.</p>
+      </section>}
       {staffing && staffing.roles.length>0 && <section aria-label="Dimensionamento de profissionais da obra" className={`${tile} space-y-2 p-4`}>
         <h2 className="flex items-center gap-2 text-sm font-bold"><HardHat size={17} style={{color:theme.primaryColor}}/> Dimensionamento de profissionais</h2>
         <p className="text-xs text-slate-200"><strong>{staffing.total} profissionais simultâneos no pico</strong> previsto para as etapas com prazo definido. O número considera equipes de frentes paralelas somadas no mesmo dia; não é a quantidade de pessoas contratadas.</p>
@@ -794,7 +891,7 @@ export const ScheduleView:React.FC=()=>{
         <p className="text-[11px] text-amber-200">Cada função requer equipe real confirmada. O pico de funções não é necessariamente simultâneo: use o total de pico para planejar mobilização e as linhas por função para contratar.</p>
       </section>}
       <section className={`${tile} space-y-3 p-4`}><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Etapas e equipes</h2><p className="mt-1 text-[11px] text-slate-400">Defina a quantidade real de profissionais por função em cada serviço.</p></div><button type="button" disabled={!report.entries.length} onClick={()=>exportScheduleCSV(current)} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-40"><Download size={14}/> Exportar CSV</button><button type="button" disabled={!report.entries.length} onClick={()=>setPrintHtml(buildScheduleDocument(current,attached,company))} className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 px-3 py-2 text-xs text-orange-200 disabled:opacity-40">Preparar PDF</button></div>
-      {report.entries.length===0?<div className="py-6 text-center text-xs text-slate-500">Nenhuma etapa adicionada. Importe a composição SINAPI e informe a quantidade para começar.</div>:report.entries.map((item,index)=><article key={item.task.id} className="space-y-3 rounded-xl border border-white/10 bg-[#0b0e15] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-[10px] font-semibold uppercase text-orange-300">Etapa {index+1} · código {item.task.composition.code}</p><h3 className="mt-1 text-xs font-semibold leading-snug text-white">{item.task.composition.description}</h3><p className="mt-1 text-[10px] text-slate-500">Origem: {item.task.composition.sourceFile} · {item.task.composition.sourceSheet} · {sinapiOriginLabel(item.task.composition)}</p></div><div className="flex shrink-0 items-center gap-1"><button disabled={index===0} title="Mover etapa acima" onClick={()=>shiftTask(index,-1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowUp size={14}/></button><button disabled={index===report.entries.length-1} title="Mover etapa abaixo" onClick={()=>shiftTask(index,1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowDown size={14}/></button><button title="Remover etapa" onClick={()=>removeTask(item.task.id)} className="rounded-lg p-1.5 text-rose-300 hover:bg-rose-500/10"><Trash2 size={15}/></button></div></div>
+      {report.entries.length===0?<div className="py-6 text-center text-xs text-slate-500">Nenhuma etapa adicionada. Importe a composição SINAPI e informe a quantidade para começar.</div>:report.entries.map((item,index)=><article key={item.task.id} className="space-y-3 rounded-xl border border-white/10 bg-[#0b0e15] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-[10px] font-semibold uppercase text-orange-300">Etapa {index+1} · código {item.task.composition.code}</p><h3 className="mt-1 text-xs font-semibold leading-snug text-white">{item.task.composition.description}</h3><p className="mt-1 text-[10px] text-sky-300">Especialidade: {categoryLabel(item.task.composition)}</p><p className="mt-1 text-[10px] text-slate-500">Origem: {item.task.composition.sourceFile} · {item.task.composition.sourceSheet} · {sinapiOriginLabel(item.task.composition)}</p></div><div className="flex shrink-0 items-center gap-1"><button disabled={index===0} title="Mover etapa acima" onClick={()=>shiftTask(index,-1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowUp size={14}/></button><button disabled={index===report.entries.length-1} title="Mover etapa abaixo" onClick={()=>shiftTask(index,1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowDown size={14}/></button><button title="Remover etapa" onClick={()=>removeTask(item.task.id)} className="rounded-lg p-1.5 text-rose-300 hover:bg-rose-500/10"><Trash2 size={15}/></button></div></div>
         <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-slate-400">Quantidade ({item.task.composition.unit})<EditableNumericInput aria-label={`Quantidade da etapa ${item.task.composition.code}`} className={`${control} mt-1`} value={item.task.quantity} required min={0.000001} onCommit={q=>{if(q<measuredQuantity(item.task)){setError('Não é possível reduzir a quantidade abaixo do avanço físico já medido.');return;}changeTask({...item.task,quantity:q});setError('');}}/></label><div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] text-slate-400">Horas-homem totais</p><strong className="text-sm">{fmt(item.totalHH,3)} HH</strong></div></div>
         {current.scheduleMode==='dependencias'&&<div className="rounded-xl border border-white/10 p-3"><p className="text-[11px] font-semibold text-slate-200">Atividades predecessoras</p><p className="mt-1 text-[10px] text-slate-500">Sem predecessoras = pode começar no início da obra. O sistema bloqueia ciclos e dependências inválidas.</p><div className="mt-2 max-h-40 space-y-1 overflow-y-auto">{current.tasks.filter(t=>t.id!==item.task.id).length===0?<span className="text-[10px] text-slate-500">Nenhuma outra etapa.</span>:current.tasks.filter(t=>t.id!==item.task.id).map(t=><label key={t.id} className="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" checked={(item.task.dependencies||[]).includes(t.id)} onChange={e=>changeTask({...item.task,dependencies:e.target.checked?[...new Set([...(item.task.dependencies||[]),t.id])]:(item.task.dependencies||[]).filter(id=>id!==t.id)})}/>{t.composition.code} · {t.composition.description.slice(0,62)}</label>)}</div></div>}
         {attached&&<label className="block text-[11px] text-slate-400">Item financeiro correspondente no orçamento (opcional)<select className={`${control} mt-1`} value={item.task.quoteItemId||''} onChange={e=>changeTask({...item.task,quoteItemId:e.target.value||undefined})}><option value="">Sem correspondência financeira</option>{attached.items.map(q=><option key={q.id} value={q.id}>{q.name} · {fmt(q.quantity)} {q.unit} · R$ {fmt(q.totalPrice)}</option>)}</select><span className="mt-1 block text-[10px] text-slate-500">Só entra no físico-financeiro se a unidade e a quantidade forem compatíveis, sem associar o mesmo item duas vezes.</span></label>}

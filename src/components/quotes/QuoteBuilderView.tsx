@@ -28,6 +28,7 @@ import { ReferencePreferences } from '../references/ReferencePreferences';
 import {defaultConstructionReferences,validReferenceSettings,type ConstructionReferenceSettings} from '../../utils/constructionReferences';
 import { EditableNumericInput } from '../common/EditableNumericInput';
 import {laborDemandForQuantity, sameServiceUnit} from '../../utils/quoteSchedule';
+import {categoryLabel,matchesSinapiCategory,sinapiCategoryOptions,type SinapiCategoryFilter} from '../../utils/sinapiCategories';
 
 export const QuoteBuilderView: React.FC = () => {
   const { clients, catalog, addQuote, updateQuote, editingQuote, setEditingQuote, draftClientId, setDraftClientId, getNextQuoteNumber, setActiveView, setActiveQuoteForPreview } = useApp();
@@ -44,6 +45,7 @@ export const QuoteBuilderView: React.FC = () => {
   // Catalog item picker modal state
   const [isItemPickerOpen, setIsItemPickerOpen] = useState(false);
   const [itemPickerTab, setItemPickerTab] = useState<'todos' | 'materiais' | 'servicos' | 'mao_de_obra'>('todos');
+  const [itemPickerSpecialty,setItemPickerSpecialty]=useState<SinapiCategoryFilter>('todas');
   const [itemPickerSearch, setItemPickerSearch] = useState('');
 
   // Additional costs & adjustments
@@ -88,7 +90,9 @@ export const QuoteBuilderView: React.FC = () => {
   // Add item from catalog picker
   const handleAddItemFromCatalog = (catalogItem: CatalogItem) => {
     setItems(prev => {
-      const existing = prev.find(i => i.name === catalogItem.name && i.type === catalogItem.type);
+      // Dois serviços de nomes iguais em catálogos distintos não são o mesmo escopo.
+      // Não mesclar indevidamente elétrica e hidráulica no orçamento.
+      const existing = prev.find(i => i.catalogItemId === catalogItem.id && i.type === catalogItem.type);
       if (existing) {
         return prev.map(i =>
           i.id === existing.id
@@ -193,6 +197,8 @@ export const QuoteBuilderView: React.FC = () => {
     if (itemPickerTab === 'materiais' && item.type !== 'material') return false;
     if (itemPickerTab === 'servicos' && item.type !== 'servico') return false;
     if (itemPickerTab === 'mao_de_obra' && item.type !== 'mao_de_obra') return false;
+    if (itemPickerSpecialty !== 'todas' && (item.type !== 'servico' || !item.sinapiComposition ||
+      !matchesSinapiCategory(item.sinapiComposition,itemPickerSpecialty)))return false;
     if (itemPickerSearch) {
       const term = itemPickerSearch.toLowerCase();
       return item.name.toLowerCase().includes(term) || item.category.toLowerCase().includes(term);
@@ -310,7 +316,7 @@ export const QuoteBuilderView: React.FC = () => {
                         <span>{formatCurrency(item.unitPrice)}</span>
                       </div>
                       {labor.length>0 && <p className="mt-1 text-[10px] leading-relaxed text-sky-300" title={labor.map(l=>`${l.role}: ${l.hours.toFixed(3)} HH`).join(' | ')}>
-                        SINAPI {sinapi?.code} · {labor.reduce((sum,l)=>sum+l.hours,0).toLocaleString('pt-BR',{maximumFractionDigits:2})} HH referenciais · dimensione a equipe no Cronograma
+                        {sinapi?categoryLabel(sinapi):'Serviço'} · SINAPI {sinapi?.code} · {labor.reduce((sum,l)=>sum+l.hours,0).toLocaleString('pt-BR',{maximumFractionDigits:2})} HH referenciais · dimensione a equipe no Cronograma
                       </p>}
                     </div>
                   </div>
@@ -695,11 +701,19 @@ export const QuoteBuilderView: React.FC = () => {
               </button>
             </div>
 
+            <label className="block pb-2 text-[11px] text-slate-300">Especialidade do serviço (quando já vinculada ao SINAPI Analítico)
+              <select aria-label="Filtrar itens do orçamento por especialidade"
+                className="mt-1 min-h-10 w-full rounded-lg border border-white/10 bg-[#1b202c] px-3 text-slate-100"
+                value={itemPickerSpecialty} onChange={e=>setItemPickerSpecialty(e.target.value as SinapiCategoryFilter)}>
+                {sinapiCategoryOptions.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            {itemPickerSpecialty!=='todas'&&<p className="mb-2 text-[11px] text-amber-200">Somente serviços já vinculados a composições analíticas verificadas aparecem neste filtro. Cadastre e vincule outras especialidades no catálogo/cronograma antes de selecionar.</p>}
             {/* Items list with orange "+" icon (Referência visual #6) */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {filteredCatalogItems.map(catalogItem => {
                 const countInQuote =
-                  items.find(i => i.name === catalogItem.name)?.quantity || 0;
+                  items.find(i => i.catalogItemId === catalogItem.id)?.quantity || 0;
 
                 const icon =
                   catalogItem.type === 'servico' ? (
@@ -730,6 +744,7 @@ export const QuoteBuilderView: React.FC = () => {
                             {formatCurrency(catalogItem.price)} {catalogItem.unit !== 'un' ? `/${catalogItem.unit}` : ''}
                           </span>
                         </div>
+                        {catalogItem.type==='servico'&&<p className="mt-1 text-[10px] text-sky-300">{catalogItem.sinapiComposition?categoryLabel(catalogItem.sinapiComposition):catalogItem.category||'Especialidade ainda não confirmada no SINAPI'}</p>}
                       </div>
                     </div>
 
