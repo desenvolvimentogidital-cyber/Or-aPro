@@ -104,7 +104,7 @@ test('SINAPI oficial: EPI e ferramentas horistas não viram profissionais ou HH'
   const rows=[
     ['SINAPI'],['RELATÓRIO ANALÍTICO DE COMPOSIÇÕES'],['Mês de Referência:','09/2026'],
     [],[],[],[],[],
-    ['Grupo','Código da\\nComposição','Tipo Item','Código do\\nItem','Descrição','Unidade','Coeficiente','Situação'],
+    ['Grupo','Código da\nComposição','Tipo Item','Código do\nItem','Descrição','Unidade','Coeficiente','Situação'],
     ['Acessibilidade',105006,'','','RAMPA DE ACESSIBILIDADE','UN','','COM CUSTO'],
     ['Acessibilidade',105006,'COMPOSICAO',88316,'SERVENTE COM ENCARGOS COMPLEMENTARES','H',2.189,'COM CUSTO'],
     ['Acessibilidade',105006,'COMPOSICAO',88309,'PEDREIRO COM ENCARGOS COMPLEMENTARES','H',1.094,'COM CUSTO'],
