@@ -15,11 +15,12 @@ import {
   Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import { Quote } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { shareProposal } from '../../services/cloud';
 import { buildQuoteDocument } from '../../utils/quoteDocument';
+import {makeQuotePdfFile,shareQuotePdf,downloadQuotePdf} from '../../utils/quotePdfFile';
 
 interface QuotePreviewModalProps {
   quote: Quote;
@@ -34,6 +35,8 @@ export const QuotePreviewModal: React.FC<QuotePreviewModalProps> = ({ quote, onC
   const [shareLink, setShareLink] = useState('');
   const [shareError, setShareError] = useState('');
   const [sharing, setSharing] = useState(false);
+  const [pdfSharing,setPdfSharing]=useState(false);
+  const [pdfShareStatus,setPdfShareStatus]=useState('');
   const printFrameRef = useRef<HTMLIFrameElement>(null);
   const [printError, setPrintError] = useState('');
   const client = clients.find(c => c.id === quote.clientId);
@@ -90,19 +93,46 @@ export const QuotePreviewModal: React.FC<QuotePreviewModalProps> = ({ quote, onC
     finally { setSharing(false); }
   };
 
-  // WhatsApp share message
-  const waMessage = encodeURIComponent(
-    `Olá ${quote.clientName}! Segue a proposta comercial ${quote.number} da ${company.tradeName}:\n\n` +
-    `• Itens: ${quote.items.length} itens inclusos\n` +
-    `• Valor Total: ${formatCurrency(quote.total)}\n` +
-    `• Validade: até ${formatDate(quote.validUntil)}\n\n` +
-    `Podemos confirmar para dar início ao serviço? Fico à total disposição!\n` +
-    `${company.tradeName} - ${company.whatsapp}`
-  );
+  // A API Web Share permite enviar um arquivo PDF real (não apenas o texto do wa.me).
+  // O usuário escolhe WhatsApp e confirma o contato; a Web Share API não autoriza
+  // escolher a conversa antecipadamente nem garante a transmissão do arquivo.
+  const handleSharePdf=async()=>{
+    if(pdfSharing)return;
+    setPdfShareStatus('');
+    let file:File;
+    try{
+      file=makeQuotePdfFile({quote,company,client});
+    }catch(e){
+      setPdfShareStatus(e instanceof Error?e.message:'Não foi possível gerar o PDF.');
+      return;
+    }
+    setPdfSharing(true);
+    try{
+      const outcome=await shareQuotePdf(file,quote.number);
+      if(outcome==='unsupported'){
+        downloadQuotePdf(file);
+        setPdfShareStatus('Seu navegador não consegue anexar PDFs diretamente ao WhatsApp. O arquivo foi preparado para download. Abra o WhatsApp, selecione a conversa do cliente e anexe o PDF como Documento.');
+      }else if(outcome==='cancelled'){
+        setPdfShareStatus('Compartilhamento cancelado. Nenhum arquivo foi enviado.');
+      }else{
+        setPdfShareStatus('Compartilhamento aberto/concluído pelo Android. Confirme no WhatsApp se o documento foi entregue; o OrçaPro não altera o status do orçamento automaticamente.');
+      }
+    }catch{
+      downloadQuotePdf(file);
+      setPdfShareStatus('O Android não conseguiu compartilhar o arquivo. Baixe o PDF e envie-o manualmente no WhatsApp como Documento.');
+    }finally{
+      setPdfSharing(false);
+    }
+  };
 
-  const cleanPhone = quote.clientPhone.replace(/\D/g, '');
-  const waUrl = `https://wa.me/${cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`}?text=${waMessage}`;
-
+  const handleDownloadPdf=()=>{
+    try{
+      downloadQuotePdf(makeQuotePdfFile({quote,company,client}));
+      setPdfShareStatus('PDF baixado/preparado. No WhatsApp, abra a conversa do cliente e selecione Anexar → Documento para enviar o arquivo.');
+    }catch(e){
+      setPdfShareStatus(e instanceof Error?e.message:'Não foi possível gerar o arquivo PDF.');
+    }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-lg min-h-screen sm:min-h-0 sm:my-6 bg-[#0c0e14] sm:rounded-3xl border border-white/10 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
@@ -188,18 +218,22 @@ export const QuotePreviewModal: React.FC<QuotePreviewModalProps> = ({ quote, onC
               </div>
 
               <div className="space-y-2.5">
-                {/* 1. Enviar via WhatsApp */}
-                <a
-                  href={cleanPhone ? waUrl : undefined}
-                  aria-disabled={!cleanPhone}
-                  onClick={e => { if (!cleanPhone) e.preventDefault(); }}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md"
-                >
-                  <Send className="w-4 h-4" />
-                  <span>{cleanPhone ? 'Abrir WhatsApp (confirme envio)' : 'Cadastre o telefone do cliente para enviar'}</span>
-                </a>
+                {/* Compartilha arquivo real, com seletor nativo de app e contato do Android. */}
+                <button type="button" disabled={pdfSharing} onClick={()=>void handleSharePdf()}
+                  className="min-h-12 w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-50">
+                  <Send className="w-4 h-4"/>
+                  <span>{pdfSharing?'Preparando compartilhamento...':'Enviar PDF pelo WhatsApp'}</span>
+                </button>
+                <p className="text-[11px] leading-relaxed text-slate-300">
+                  O Android abrirá o menu de compartilhamento. Escolha <strong>WhatsApp</strong>,
+                  selecione a conversa de <strong>{quote.clientName}</strong> e confirme o envio do arquivo PDF.
+                  O número não é escolhido automaticamente.
+                </p>
+                <button type="button" onClick={handleDownloadPdf}
+                  className="min-h-11 w-full rounded-xl border border-orange-500/40 bg-orange-500/10 p-3 text-xs font-semibold text-orange-200 flex items-center justify-center gap-2">
+                  <Download className="h-4 w-4"/> Baixar PDF para anexar manualmente
+                </button>
+                {pdfShareStatus&&<p role="status" className="rounded-xl border border-white/10 bg-[#0c0e14] p-3 text-xs leading-relaxed text-amber-200">{pdfShareStatus}</p>}
 
                 {<div className="space-y-2 p-3 rounded-xl border border-white/10 bg-[#0c0e14]">
                   <p className="text-xs font-semibold text-slate-200">Link público de aprovação</p>
@@ -208,7 +242,7 @@ export const QuotePreviewModal: React.FC<QuotePreviewModalProps> = ({ quote, onC
                   {shareError && <p role="alert" className="text-xs text-red-400">{shareError}</p>}
                 </div>}
 
-                <p className="text-[11px] text-slate-400">Abrir o WhatsApp não envia a proposta automaticamente; confirme o envio no aplicativo do WhatsApp. A situação “enviado” deve ser registrada manualmente.</p>
+                <p className="text-[11px] text-slate-400">O arquivo em PDF contém os dados do orçamento e respeita as opções de exibição cadastradas. Ao compartilhar, confirme o destinatário e o envio no WhatsApp. A situação “enviado” deve ser registrada manualmente.</p>
 
                 {/* 2. Imprimir / Salvar em PDF */}
                 <button

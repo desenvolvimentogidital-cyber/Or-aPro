@@ -47,6 +47,7 @@ export interface WorkSchedule {
   title: string;
   siteAddress?: string; // Local da obra informado pelo responsável; não usar endereço da empresa como obra.
   quoteId?: string;
+  referenceSettings?: import('../utils/constructionReferences').ConstructionReferenceSettings; // Preferência da obra, sem alterar composições existentes
   startDate: string;
   hoursPerDay: number;
   efficiency: number; // 0 < eficiência <= 1; ajustada manualmente pelo responsável

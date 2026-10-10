@@ -15,6 +15,10 @@ import type { SinapiComposition, WorkSchedule, ScheduleTask } from '../../types/
 import { newId } from '../../utils/quoteMath';
 import { sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
 import { compositionIdentity, findCatalogSinapiCandidates, savedSinapiForQuote, usableSinapiComposition } from '../../utils/catalogSinapi';
+import {searchSinapiOnline,onlineSinapiPendingComposition,type SinapiOnlineResult} from '../../services/sinapiOnline';
+import { ReferencePreferences } from '../references/ReferencePreferences';
+import {costReferenceName,validReferenceSettings} from '../../utils/constructionReferences';
+import { EditableNumericInput } from '../common/EditableNumericInput';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -68,6 +72,11 @@ export const ScheduleView:React.FC=()=>{
   const [catalogQuantity,setCatalogQuantity]=useState('');
   const [catalogTargetDays,setCatalogTargetDays]=useState('');
   const [catalogNotice,setCatalogNotice]=useState('');
+  const [onlineResults,setOnlineResults]=useState<SinapiOnlineResult[]>([]);
+  const [onlineStatus,setOnlineStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const [onlineError,setOnlineError]=useState('');
+  const [selectedOnline,setSelectedOnline]=useState<SinapiOnlineResult|null>(null);
+  const [catalogQuoteItemId,setCatalogQuoteItemId]=useState('');
   const [showImport,setShowImport]=useState(true);
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
@@ -107,6 +116,26 @@ export const ScheduleView:React.FC=()=>{
         .replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query))).slice(0,45);
   },[catalog,catalogServiceQuery]);
   const selectedCatalogService=catalog.find(item=>item.id===catalogSelectedId && item.type==='servico');
+  const onlineTerm=(catalogSinapiQuery.trim()||selectedCatalogService?.name.trim()||'').slice(0,100);
+  useEffect(()=>{
+    if(onlineTerm.length<2){setOnlineResults([]);setOnlineStatus('idle');setOnlineError('');return;}
+    const controller=new AbortController();
+    setOnlineStatus('loading');
+    setOnlineError('');
+    const id=window.setTimeout(()=>{
+      searchSinapiOnline(onlineTerm,controller.signal).then(results=>{
+        if(controller.signal.aborted)return;
+        setOnlineResults(results);
+        setOnlineStatus('ready');
+      }).catch(e=>{
+        if(controller.signal.aborted)return;
+        setOnlineStatus('error');
+        setOnlineResults([]);
+        setOnlineError(e instanceof Error?e.message:'Consulta online indisponível.');
+      });
+    },550);
+    return ()=>{window.clearTimeout(id);controller.abort();};
+  },[onlineTerm]);
   const knownCompositions=useMemo(()=>{
     const items:SinapiComposition[]=[];
     const used=new Set<string>();
@@ -135,6 +164,8 @@ export const ScheduleView:React.FC=()=>{
     return results;
   },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
   const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
+  const filteredOnlineResults=onlineResults.filter(row=>
+    !knownCompositions.some(c=>c.code===row.code && sameServiceUnit(c.unit,row.unit)));
   const selectedCatalogQuantity=decimalFromInput(catalogQuantity);
   const catalogSimulation=useMemo(()=>{
     if(!current||!selectedCatalogComposition||!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0)
@@ -206,7 +237,7 @@ export const ScheduleView:React.FC=()=>{
     if(current.tasks.some(t=>t.quoteItemId===item.id)){setError('Este item já está vinculado ao cronograma.');return;}
     const key=quoteComposition[item.id]||'';
     const stored=savedSinapiForQuote(item,catalog);
-    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key)
+    const chosen=knownCompositions.find(c=>`${c.code}|${c.unit}`===key)
       || (stored && `${stored.code}|${stored.unit}`===key?stored:undefined);
     if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
@@ -276,7 +307,44 @@ export const ScheduleView:React.FC=()=>{
       setCatalogChoice('');
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível associar o serviço SINAPI.');}
   };
+  const appendOnlinePending=()=>{
+    if(!current||!selectedOnline){setError('Selecione a composição para registrar a etapa.');return;}
+    const q=decimalFromInput(catalogQuantity);
+    if(!Number.isFinite(q)||q<=0){setError('Informe uma quantidade válida na unidade SINAPI.');return;}
+    if(current.tasks.length>=180){setError('Limite de 180 serviços por cronograma.');return;}
+    const quoteItem=catalogQuoteItemId?attached?.items.find(x=>x.id===catalogQuoteItemId):undefined;
+    if(quoteItem && current.tasks.some(t=>t.quoteItemId===quoteItem.id)){setError('Este item do orçamento já tem etapa vinculada.');return;}
+    const linked=quoteItem && sameServiceUnit(quoteItem.unit,selectedOnline.unit)
+      && Math.abs(quoteItem.quantity-q)<0.000001?quoteItem.id:undefined;
+    const composition=onlineSinapiPendingComposition(selectedOnline);
+    const task:ScheduleTask={
+      id:newId('etapa'),composition,quantity:q,crew:{},quoteItemId:linked,
+      notes:'Catálogo textual SINPRES (não oficial). SEM coeficientes analíticos: equipe e prazo pendentes de confirmação.',
+      dependencies:current.scheduleMode==='dependencias'&&current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]
+    };
+    change({tasks:[...current.tasks,task]});
+    setCatalogNotice(`Composição ${composition.code} registrada como ETAPA PENDENTE, com ${fmt(q)} ${composition.unit}. Código e descrição vieram do catálogo de terceiros. O sistema NÃO calculou horas-homem nem prazo. Importe os coeficientes analíticos para finalizar o planejamento.`);
+    setSelectedOnline(null);setCatalogQuoteItemId('');setCatalogQuantity('');setError('');
+  };
   const changeTask=(task:ScheduleTask)=>change({tasks:current!.tasks.map(t=>t.id===task.id?task:t)});
+  const completePendingSinapiTask=(task:ScheduleTask,importedComposition:SinapiComposition)=>{
+    if(!current||task.composition.labor.length>0)return;
+    if(task.composition.code!==importedComposition.code ||
+       !sameServiceUnit(task.composition.unit,importedComposition.unit)){
+      setError('A composição analítica deve ter o mesmo código e unidade da etapa pendente.');return;
+    }
+    try{
+      const composition=usableSinapiComposition(importedComposition)?importedComposition:
+        withSinapiProvenance(importedComposition,{
+          reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
+        });
+      const result=simulateCrewForQuote(composition,task.quantity,current.hoursPerDay,current.efficiency);
+      changeTask({...task,composition,crew:result.crew,
+        notes:(task.notes||'')+' Coeficientes analíticos confirmados na planilha importada; revisar equipe.'});
+      setError('');
+      setImportInfo(`Etapa SINAPI ${composition.code} recebeu coeficientes analíticos reais. Revise a equipe inicial e o prazo simulado.`);
+    }catch(e){setError(e instanceof Error?e.message:'Não foi possível completar o dimensionamento da etapa.');}
+  };
   const recordMeasurement=(task:ScheduleTask)=>{
     const amount=decimalFromInput(measurementInput[task.id]||'');
     const now=new Date();const localDate=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
@@ -303,8 +371,12 @@ export const ScheduleView:React.FC=()=>{
         <button type="button" className="w-full rounded-xl border border-orange-500/30 bg-orange-500/10 px-3 py-2.5 text-left text-xs text-orange-200" onClick={()=>{const other=schedules.find(p=>p.id!==current.id && p.tasks?.length>0);if(other)setSelectedScheduleId(other.id);}}>
           Este cronograma está vazio. Abrir o cronograma com serviços cadastrados →
         </button>}
-      {current&&<><label className="block text-[11px] text-slate-400">Identificação da obra<input className={`${control} mt-1`} value={current.title} maxLength={120} onChange={e=>change({title:e.target.value})} placeholder="Nome real da obra"/></label><label className="block text-[11px] text-slate-400">Local / endereço da obra<input className={`${control} mt-1`} value={current.siteAddress||''} maxLength={180} onChange={e=>change({siteAddress:e.target.value})} placeholder="Local real da obra (opcional)"/></label><label className="block text-[11px] text-slate-400">Vincular a um orçamento existente<select className={`${control} mt-1`} value={current.quoteId||''} onChange={e=>change({quoteId:e.target.value||undefined,tasks:current.tasks.map(t=>({...t,quoteItemId:undefined}))})}><option value="">Sem orçamento vinculado</option>{quotes.map(q=><option value={q.id} key={q.id}>{q.number} · {q.clientName} · {q.status}</option>)}</select></label>{attached&&attached.status!=='aprovado'&&<div className="text-[11px] text-amber-300">O orçamento vinculado ainda está como “{attached.status}”. O cronograma é apenas uma previsão, não uma execução contratada.</div>}
-      <div className="grid grid-cols-2 gap-2.5"><label className="text-[11px] text-slate-400">Data de início<input type="date" className={`${control} mt-1`} value={current.startDate} onChange={e=>change({startDate:e.target.value})}/></label><label className="text-[11px] text-slate-400">Jornada (h/dia)<input type="number" min="0.1" max="24" step="0.5" className={`${control} mt-1`} value={toInput(current.hoursPerDay)} onChange={e=>change({hoursPerDay:Number(e.target.value)})}/></label><label className="text-[11px] text-slate-400">Eficiência planejada (%)<input type="number" min="1" max="100" step="1" className={`${control} mt-1`} value={toInput(Math.round(current.efficiency*100))} onChange={e=>change({efficiency:Number(e.target.value)/100})}/></label><div className="flex items-end"><button onClick={()=>{if(window.confirm('Excluir este cronograma e todas as suas etapas?')){deleteSchedule(current.id);setSelectedScheduleId('');}}} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 px-3 py-2.5 text-xs text-rose-300 hover:bg-rose-500/10"><Trash2 size={14}/> Excluir cronograma</button></div></div>
+      {current&&<><label className="block text-[11px] text-slate-400">Identificação da obra<input className={`${control} mt-1`} value={current.title} maxLength={120} onChange={e=>change({title:e.target.value})} placeholder="Nome real da obra"/></label><label className="block text-[11px] text-slate-400">Local / endereço da obra<input className={`${control} mt-1`} value={current.siteAddress||''} maxLength={180} onChange={e=>change({siteAddress:e.target.value})} placeholder="Local real da obra (opcional)"/></label><label className="block text-[11px] text-slate-400">Vincular a um orçamento existente<select className={`${control} mt-1`} value={current.quoteId||''} onChange={e=>{const related=quotes.find(q=>q.id===e.target.value);change({quoteId:e.target.value||undefined,referenceSettings:current.referenceSettings||related?.referenceSettings,tasks:current.tasks.map(t=>({...t,quoteItemId:undefined}))});}}><option value="">Sem orçamento vinculado</option>{quotes.map(q=><option value={q.id} key={q.id}>{q.number} · {q.clientName} · {q.status}</option>)}</select></label>{attached&&attached.status!=='aprovado'&&<div className="text-[11px] text-amber-300">O orçamento vinculado ainda está como “{attached.status}”. O cronograma é apenas uma previsão, não uma execução contratada.</div>}
+      <ReferencePreferences value={current.referenceSettings||attached?.referenceSettings} onChange={referenceSettings=>change({referenceSettings})}/>
+      {current.referenceSettings&&!validReferenceSettings(current.referenceSettings)&&<p role="alert" className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Confira o nome da referência personalizada e a competência MM/AAAA. A escolha não altera valores nem coeficientes.</p>}
+      {(current.referenceSettings?.costReference||attached?.referenceSettings?.costReference) && (current.referenceSettings?.costReference||attached?.referenceSettings?.costReference)!=='SINAPI' &&
+        <p className="text-[11px] text-amber-300">Referência escolhida para a obra: <strong>{costReferenceName(current.referenceSettings||attached?.referenceSettings)}</strong>. O importador e os cálculos abaixo ainda utilizam somente composições SINAPI. Não misture parâmetros de tabelas diferentes.</p>}
+      <div className="grid grid-cols-2 gap-2.5"><label className="text-[11px] text-slate-400">Data de início<input type="date" className={`${control} mt-1`} value={current.startDate} onChange={e=>change({startDate:e.target.value})}/></label><label className="text-[11px] text-slate-400">Jornada (h/dia)<EditableNumericInput aria-label="Jornada em horas por dia" min={0.1} max={24} required className={`${control} mt-1`} value={current.hoursPerDay} onCommit={hoursPerDay=>change({hoursPerDay})}/></label><label className="text-[11px] text-slate-400">Eficiência planejada (%)<EditableNumericInput aria-label="Eficiência planejada em porcentagem" min={1} max={100} integer required className={`${control} mt-1`} value={Math.round(current.efficiency*100)} onCommit={percent=>change({efficiency:percent/100})}/></label><div className="flex items-end"><button onClick={()=>{if(window.confirm('Excluir este cronograma e todas as suas etapas?')){deleteSchedule(current.id);setSelectedScheduleId('');}}} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 px-3 py-2.5 text-xs text-rose-300 hover:bg-rose-500/10"><Trash2 size={14}/> Excluir cronograma</button></div></div>
       <div className="space-y-3 rounded-xl border border-orange-500/15 bg-orange-500/5 p-3">
         <label className="block text-[11px] text-slate-300">Modo de planejamento<select className={`${control} mt-1`} value={current.scheduleMode||'sequencial'} onChange={e=>updateMode(e.target.value as 'sequencial'|'dependencias')}><option value="sequencial">Sequencial — compatível com cronogramas antigos</option><option value="dependencias">Dependências — permite execução paralela</option></select></label>
         <p className="text-[10px] text-slate-400">No modo dependências, cada etapa pode começar após suas predecessoras. Ao ativar, a sequência existente é preservada e você pode ajustar as dependências em cada etapa. Equipes compartilhadas em serviços paralelos devem ser planejadas manualmente: não há nivelamento automático de recursos.</p>
@@ -317,14 +389,14 @@ export const ScheduleView:React.FC=()=>{
     {/* Entrada de arquivos sempre montada: a busca mobile pode abrir o seletor mesmo com painel de importação fechado. */}
     <input aria-label="Importar planilha SINAPI" ref={fileRef} type="file" accept=".xlsx,.csv,.tsv" className="hidden" multiple onChange={e=>void loadFiles(e.target.files)}/>
     <section className={`${tile} space-y-3 p-4`}><button type="button" onClick={()=>setShowImport(v=>!v)} className="flex w-full items-center justify-between text-left"><span className="flex items-center gap-2 text-sm font-semibold"><FileSpreadsheet size={17} style={{color:theme.primaryColor}}/> Importar composições SINAPI</span><ChevronDown size={17} className={`text-slate-400 transition ${showImport?'rotate-180':''}`}/></button>
-      {showImport&&<><p className="text-[11px] leading-relaxed text-slate-400">Importe o arquivo <strong>SINAPI Referência</strong> (aba <strong>Analítico</strong>) em XLSX. Você também pode selecionar as quatro planilhas juntas: o sistema identificará a fonte de horas-homem e avisará quais arquivos são apenas de preços, percentuais, famílias ou manutenções. Planilhas CSV/TSV normalizadas continuam aceitas.</p>
+      {showImport&&<><p className="text-[11px] leading-relaxed text-slate-400">A CAIXA divulga o relatório analítico mensal em PDF a partir de 2025. O importador atual não lê PDF: para dimensionar equipe, forneça uma planilha analítica compatível em XLSX, CSV ou TSV contendo coeficientes HH. Os XLSX oficiais de custos, percentuais, famílias e manutenções não substituem o relatório analítico.</p>
       <button onClick={()=>fileRef.current?.click()} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/10 px-3 py-3 text-xs font-semibold text-orange-200 hover:bg-orange-500/15 disabled:opacity-50"><Upload size={17}/>{busy?'Lendo planilha...':'Selecionar planilhas do SINAPI'}</button>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><label className="block text-[11px] text-slate-400">Competência (MM/AAAA)<input className={`${control} mt-1`} value={reference} maxLength={7} onChange={e=>setReference(e.target.value)} placeholder="MM/AAAA"/></label><label className="block text-[11px] text-slate-400">UF da referência<select className={`${control} mt-1`} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF | '')}><option value="">Selecione a UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}</select></label><label className="block text-[11px] text-slate-400">Encargos SINAPI<select className={`${control} mt-1`} value={regionalRegime} onChange={e=>setRegionalRegime(e.target.value as SinapiRegime | '')}><option value="">Selecione</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option></select></label></div><p className="text-[10px] text-amber-300">A planilha analítica informa HH, não preços. UF e encargos identificam a referência declarada e NÃO modificam os coeficientes nem calculam custo automaticamente. Selecione o regime correspondente ao documento.</p>
       <button type="button" onClick={exportModelCSV} className="mr-3 text-[11px] text-orange-300 hover:underline">Baixar modelo de colunas (CSV vazio)</button>
       <a href="https://www.caixa.gov.br/poder-publico/modernizacao-gestao/sinapi/Paginas/default.aspx" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-orange-300 hover:underline">Abrir fonte oficial SINAPI (CAIXA) <ExternalLink size={12}/></a>
       <p className="text-[11px] text-amber-300/90">Importante: o percentual de mão de obra não representa horas-homem. Prazo por serviço depende das composições analíticas, quantitativo, equipe e jornada reais.</p>
       {importInfo&&<p className="rounded-xl bg-white/5 p-3 text-[11px] leading-relaxed text-slate-300">{importInfo}</p>}
-      {imported.length>0&&<><p className="text-[11px] text-slate-400">As composições importadas continuam disponíveis enquanto você navega entre Serviços, Orçamentos e Cronograma nesta sessão. Ao vincular um serviço do catálogo à composição, ela fica salva nesse serviço para o próximo acesso. Para novos serviços, após fechar a página, importe a planilha novamente.</p>
+      {imported.length>0&&<><p className="text-[11px] text-slate-400">As composições importadas continuam disponíveis enquanto você navega entre Serviços, Orçamentos e Cronograma nesta sessão. Ao vincular uma composição analítica validada ao catálogo, seus coeficientes ficam guardados para o próximo acesso. A consulta online busca descrições e códigos, mas NÃO fornece HH confiáveis, logo suas etapas ficam pendentes.</p>
       <label className="relative block"><Search size={15} className="absolute left-3 top-3.5 text-slate-500"/><input className={`${control} pl-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por código ou descrição"/></label>
       <div className="max-h-64 space-y-1 overflow-y-auto">{filtered.map(c=><button type="button" key={`${c.code}|${c.unit}`} onClick={()=>setSelectedComposition(`${c.code}|${c.unit}`)} className={`w-full rounded-xl border p-3 text-left ${selectedComposition===`${c.code}|${c.unit}`?'border-orange-500/60 bg-orange-500/10':'border-white/5 bg-[#0d1119]'}`}><div className="flex items-start justify-between gap-2"><strong className="text-xs text-slate-200">{c.code} · {c.unit}</strong><span className="text-[11px] text-orange-300">{fmt(c.labor.reduce((s,l)=>s+l.hoursPerUnit,0),4)} HH/{c.unit}</span></div><p className="mt-1 text-[11px] leading-snug text-slate-400">{c.description}</p></button>)}</div>
       {selected&&<div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-3"><div><strong className="text-xs">{selected.description}</strong><p className="mt-1 text-[10px] text-slate-400">{selected.labor.map(l=>`${l.role}: ${fmt(l.hoursPerUnit,5)} h/${selected.unit}`).join(' · ')}</p></div>
@@ -334,10 +406,10 @@ export const ScheduleView:React.FC=()=>{
       </div>}</>}
       </>}
     </section>
-    <section aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
+    <section id="orcapro-sinapi-lookup" aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Wrench size={18} className="text-orange-400"/> Meus serviços → SINAPI</h2>
-        <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise uma composição SINAPI pelo nome ou código, mesmo sem escolher um serviço antes. Selecione o serviço salvo apenas se quiser associá-lo à composição. A pesquisa consulta somente composições analíticas já carregadas ou vinculadas neste OrçaPro.</p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise por nome ou código. O OrçaPro consulta composições analíticas salvas e também um catálogo online de terceiros, identificado separadamente. Você escolhe o serviço correto; horas-homem não são inventadas.</p>
         {!current&&<div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
           <p className="text-xs text-amber-100">Você pode pesquisar agora. Para adicionar o resultado à obra, crie primeiro um cronograma.</p>
           <button type="button" onClick={add} className="min-h-11 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white">Criar cronograma</button>
@@ -350,7 +422,7 @@ export const ScheduleView:React.FC=()=>{
           </label>
           <div className="max-h-64 space-y-1.5 overflow-y-auto" role="group" aria-label="Selecionar serviço do catálogo">
             {catalogServices.map(item=><button key={item.id} type="button" aria-pressed={catalogSelectedId===item.id}
-              onClick={()=>{setCatalogSelectedId(item.id);setCatalogSinapiQuery('');setCatalogChoice('');setCatalogQuantity('');setCatalogTargetDays('');setCatalogNotice('');setError('');}}
+              onClick={()=>{setCatalogSelectedId(item.id);setCatalogSinapiQuery('');setCatalogChoice('');setSelectedOnline(null);setCatalogQuoteItemId('');setCatalogQuantity('');setCatalogTargetDays('');setCatalogNotice('');setError('');}}
               className={`w-full rounded-xl border p-3 text-left transition ${catalogSelectedId===item.id?'border-orange-500/60 bg-orange-500/10':'border-white/10 bg-[#0b0e15] hover:border-orange-500/30'}`}>
               <strong className="block text-xs text-slate-100">{item.name}</strong>
               <span className="mt-1 block text-[11px] text-slate-400">Unidade cadastrada: {item.unit} {usableSinapiComposition(item.sinapiComposition)?` · ✓ SINAPI ${item.sinapiComposition.code} salvo`:''}</span>
@@ -362,14 +434,14 @@ export const ScheduleView:React.FC=()=>{
           <label className="block text-xs font-semibold text-slate-200">2. Buscar composição SINAPI por nome ou código
             <input className={`${control} mt-1 min-h-12`} type="search" autoComplete="off" enterKeyHint="search"
               aria-label="Buscar composição SINAPI para o serviço" value={catalogSinapiQuery}
-              onChange={e=>{setCatalogSinapiQuery(e.target.value);setCatalogChoice('');}}
+              onChange={e=>{setCatalogSinapiQuery(e.target.value);setCatalogChoice('');setSelectedOnline(null);}}
               placeholder="Digite tomada, pintura ou o código (ex.: 91996)"/>
           </label>
           <div className="space-y-2" aria-live="polite">
             {knownCompositions.length===0
               ?<div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
-                <p><strong>Campo pronto para digitar.</strong> Ainda não existe uma base analítica carregada nesta conta. A pesquisa não consulta automaticamente toda a base SINAPI pela internet.</p>
-                <p>Para buscar composições e calcular HH reais, importe o arquivo analítico SINAPI em XLSX/CSV/TSV no quadro acima. A busca será liberada assim que a importação identificar as composições.</p>
+                <p><strong>Campo pronto para digitar.</strong> Ainda não existe uma base analítica carregada nesta conta. Para resultados sem planilha, a consulta online de terceiros é exibida logo abaixo.</p>
+                <p>Para calcular HH e prazos reais, é preciso ter a composição analítica com coeficientes. A consulta online textual identifica código, descrição e unidade; por si só não permite calcular equipe.</p>
                 <button type="button" onClick={()=>{setShowImport(true);fileRef.current?.click();}}
                   className="min-h-11 w-full rounded-xl border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-center font-bold text-orange-100">
                   <Upload size={15} className="mr-1 inline"/> Carregar composição SINAPI do arquivo
@@ -408,6 +480,37 @@ export const ScheduleView:React.FC=()=>{
           </div>
         </div>
       </div>
+      <section role="region" aria-label="Resultados da consulta online SINAPI" className="space-y-2 rounded-xl border border-sky-500/20 bg-[#101c2c] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xs font-bold text-sky-200">Consulta online de composições SINAPI</h3>
+          <span className="text-[10px] text-slate-400">SINPRES — serviço independente da CAIXA/IBGE</span>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-300">Digite uma descrição ou código no campo acima. A consulta externa mostra código, descrição e unidade; <strong>não apresenta coeficientes HH verificados</strong>. Caso escolha uma dessas composições, a etapa ficará pendente de dimensionamento.</p>
+        {onlineStatus==='idle'&&<p className="text-xs text-slate-400">Digite um nome ou código para consultar o catálogo online.</p>}
+        {onlineStatus==='loading'&&<p role="status" className="text-xs text-sky-200">Buscando “{onlineTerm}” no catálogo online…</p>}
+        {onlineStatus==='error'&&<p role="alert" className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">Consulta online indisponível: {onlineError} Você pode continuar com uma planilha importada.</p>}
+        {onlineStatus==='ready'&&<p role="status" className="text-xs text-slate-300">{filteredOnlineResults.length} composição(ões) online para “{onlineTerm}” (além das que já estão carregadas).</p>}
+        {onlineStatus==='ready'&&filteredOnlineResults.length===0&&<p className="text-xs text-slate-400">Não há novas composições no catálogo externo para essa busca. Experimente uma palavra ou o código exato.</p>}
+        {onlineStatus==='ready'&&filteredOnlineResults.length>0&&<div role="group" aria-label="Selecionar composição SINAPI online" className="max-h-64 space-y-2 overflow-y-auto">
+          {filteredOnlineResults.map(result=><button type="button" key={result.code+'|'+result.unit}
+            aria-pressed={selectedOnline?.code===result.code}
+            onClick={()=>{setSelectedOnline(result);setCatalogChoice('');setCatalogNotice('');setError('');}}
+            className={`w-full rounded-lg border p-3 text-left text-xs ${selectedOnline?.code===result.code?'border-sky-400 bg-sky-500/10':'border-white/10 bg-[#0b141e] hover:border-sky-500/40'}`}>
+            <strong className="block text-sky-200">SINAPI {result.code} · {result.unit} <span className="font-normal text-amber-200">· HH pendentes</span></strong>
+            <span className="mt-1 block leading-relaxed text-slate-200">{result.description}</span>
+          </button>)}
+        </div>}
+        {selectedOnline&&<div className="space-y-3 rounded-xl border border-sky-500/30 p-3">
+          <strong className="block text-xs text-white">{selectedOnline.code} — {selectedOnline.description}</strong>
+          <p className="text-xs leading-relaxed text-amber-200">Essa consulta não contém o relatório analítico de mão de obra. A etapa será criada SEM horas-homem, sem equipe estimada e sem prazo previsto até receber coeficientes confirmados.</p>
+          <label className="block text-xs text-slate-200">Quantidade em {selectedOnline.unit}
+            <input className={`${control} mt-1`} type="text" inputMode="decimal" aria-label="Quantidade SINAPI online" value={catalogQuantity} onChange={e=>setCatalogQuantity(e.target.value)} placeholder="Quantidade real"/>
+          </label>
+          {catalogQuoteItemId&&<p className="text-[11px] text-slate-300">Vínculo ao orçamento: {attached?.items.find(x=>x.id===catalogQuoteItemId)?.name||'Não encontrado'}. Só será registrado se unidade e quantidade forem exatamente iguais.</p>}
+          {!current&&<p className="text-xs text-amber-200">Crie um cronograma antes de registrar essa composição na obra.</p>}
+          <button type="button" disabled={!current} onClick={appendOnlinePending} className="min-h-11 w-full rounded-xl bg-sky-700 p-3 text-xs font-bold text-white hover:bg-sky-600 disabled:opacity-40">Registrar composição como etapa pendente de HH</button>
+        </div>}
+      </section>
       {selectedCatalogComposition&&<div className="space-y-3 rounded-xl border border-orange-500/25 bg-orange-500/5 p-3">
         <div>
           <h3 className="text-xs font-bold text-orange-200">3. Confirmar composição e quantidade</h3>
@@ -419,7 +522,7 @@ export const ScheduleView:React.FC=()=>{
             <input className={`${control} mt-1`} type="text" inputMode="decimal" aria-label="Quantidade na unidade SINAPI" value={catalogQuantity} onChange={e=>setCatalogQuantity(e.target.value)} placeholder="Ex.: 12"/>
           </label>
           <label className="block text-xs text-slate-200">Prazo desejado em dias úteis (opcional)
-            <input className={`${control} mt-1`} type="number" min="1" max="10000" step="1" aria-label="Prazo para serviço do catálogo" value={catalogTargetDays} onChange={e=>setCatalogTargetDays(e.target.value)} placeholder="Ex.: 3"/>
+            <input className={`${control} mt-1`} type="text" inputMode="numeric" aria-label="Prazo para serviço do catálogo" value={catalogTargetDays} onChange={e=>setCatalogTargetDays(e.target.value)} placeholder="Ex.: 3"/>
           </label>
         </div>
         {!usableSinapiComposition(selectedCatalogComposition)&&<p className="text-[11px] text-amber-200">Para confirmar esta composição recém-importada, preencha competência, UF e encargos na seção de importação acima. O código e as HH vêm da planilha, não do nome do serviço.</p>}
@@ -428,22 +531,22 @@ export const ScheduleView:React.FC=()=>{
         <button type="button" onClick={appendFromCatalog} disabled={!current||!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> {selectedCatalogService?'Adicionar etapa e salvar vínculo SINAPI':'Adicionar composição ao cronograma'}</button>
       </div>}
       {catalogNotice&&<p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-200">{catalogNotice}</p>}
-      <p className="text-[11px] leading-relaxed text-slate-400">O catálogo guarda sua descrição comercial e preço de venda. A composição SINAPI fornece apenas mão de obra analítica, não materiais nem preço final. O vínculo é uma seleção sua, e o prazo continua sendo uma estimativa.</p>
+      <p className="text-[11px] leading-relaxed text-slate-400">O catálogo guarda sua descrição comercial e preço de venda. Apenas a composição analítica efetivamente importada permite estimar mão de obra e prazo. Os resultados online são de terceiros, sem associação oficial, e servem somente para localizar código, descrição e unidade.</p>
     </section>
     {attached && current && <section aria-label="Do orçamento para o cronograma" className={`${tile} space-y-3 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
-      {!imported.length && !attached.items.some(i=>savedSinapiForQuote(i,catalog)) && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima, ou vincule uma composição ao serviço no quadro <strong>Meus serviços → SINAPI</strong>. Sem coeficientes analíticos reais não é possível calcular equipe nem duração.</p>}
+      {!knownCompositions.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Nenhuma composição analítica disponível. Use <strong>Pesquisar este serviço no catálogo SINAPI online</strong> para localizar código, descrição e unidade; a etapa ficará pendente de horas-homem até completar os coeficientes.</p>}
       {attached.items.length===0 && <p className="text-xs text-slate-400">O orçamento vinculado ainda não possui itens de serviço.</p>}
       {attached.items.map(item=>{
         const already=current.tasks.find(t=>t.quoteItemId===item.id);
         const expanded=activeQuoteItem===item.id;
         const query=quoteSearch[item.id]||'';
         const remembered=savedSinapiForQuote(item,catalog);
-        const options=remembered && !imported.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
-          ? [...imported,remembered]:imported;
+        const options=remembered && !knownCompositions.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
+          ? [...knownCompositions,remembered]:knownCompositions;
         const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
           .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
         const selectedKey=quoteComposition[item.id]||'';
@@ -464,20 +567,30 @@ export const ScheduleView:React.FC=()=>{
             <label className="block text-[11px] text-slate-400">Buscar composição por nome ou código SINAPI
               <input className={`${control} mt-1`} value={query} onChange={e=>setQuoteSearch(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: alvenaria, drywall, porcelanato, pintura ou código"/>
             </label>
+             <button type="button" onClick={()=>{
+               setCatalogSinapiQuery(query.trim()||item.name);
+               setCatalogQuoteItemId(item.id);
+               setCatalogQuantity(String(item.quantity));
+               setCatalogChoice('');
+               setSelectedOnline(null);
+               const origin=item.catalogItemId?catalog.find(c=>c.id===item.catalogItemId):catalog.find(c=>c.name.toLowerCase()===item.name.toLowerCase());
+               setCatalogSelectedId(origin?.type==='servico'?origin.id:'');
+               document.getElementById('orcapro-sinapi-lookup')?.scrollIntoView({behavior:'smooth',block:'start'});
+             }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 text-xs font-bold text-sky-200 hover:bg-sky-500/20"><Search size={15}/> Pesquisar este serviço no catálogo SINAPI online</button>
             <label className="block text-[11px] text-slate-400">Confirme a composição adequada — apenas unidade {item.unit}
               <select className={`${control} mt-1`} value={selectedKey} onChange={e=>setQuoteComposition(old=>({...old,[item.id]:e.target.value}))}>
                 <option value="">Selecione uma composição SINAPI</option>
                 {matches.map(c=><option key={`${c.code}|${c.unit}`} value={`${c.code}|${c.unit}`}>{c.code} · {c.description.slice(0,110)}</option>)}
               </select>
             </label>
-            {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição com a mesma unidade de “{item.unit}”. Pesquise por código, confira a unidade do orçamento ou selecione o serviço em <strong>Meus serviços → SINAPI</strong> para criar uma etapa independente. Não será atribuído valor financeiro incorreto.</p>}
+             {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição analítica com unidade “{item.unit}” nesta base. Use a busca online ou importe outra referência. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
               <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet}</p>
               {chosen.labor.map(l=><p key={`${l.code}:${l.role}`} className="text-[11px] text-slate-300">{l.role}: <strong>{fmt(l.hoursPerUnit,5)} HH/{chosen.unit}</strong> × {fmt(item.quantity,2)} {item.unit} = {fmt(l.hoursPerUnit*item.quantity,2)} HH</p>)}
               <label className="block text-[11px] text-slate-400">Prazo desejado em dias úteis (opcional; deixe vazio para simular 1 pessoa por profissão)
-                <input className={`${control} mt-1`} type="number" min="1" max="10000" step="1" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
+                <input className={`${control} mt-1`} type="text" inputMode="numeric" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
               </label>
               {simulation && <div className="rounded-lg bg-white/5 p-2">
                 <p className="text-[11px] font-semibold text-slate-200">Equipe simulada: {simulation.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}</p>
@@ -494,14 +607,27 @@ export const ScheduleView:React.FC=()=>{
     </section>}
     {printHtml&&<section ref={pdfPreviewRef} role="region" aria-label="Prévia do relatório do cronograma" className={`${tile} scroll-mt-4 space-y-3 p-3 sm:p-4`}><div className="flex flex-wrap items-center justify-between gap-3"><strong className="text-sm text-orange-300">Cronograma pronto para impressão</strong><div className="flex flex-wrap items-center gap-2"><button type="button" className="min-h-11 rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-500" onClick={()=>{const frame=printableFrameRef.current?.contentWindow;frame?.focus();frame?.print();}}>Imprimir / Salvar PDF</button>{printUrl&&<a href={printUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-orange-500/40 px-3 py-2 text-xs font-semibold text-orange-200 hover:bg-orange-500/10">Abrir relatório em nova aba ↗</a>}<button type="button" className="min-h-11 rounded-lg px-3 py-2 text-xs text-slate-300 hover:bg-white/10" onClick={()=>setPrintHtml('')}>Fechar prévia</button></div></div><p className="text-xs leading-relaxed text-slate-300">No computador, use “Imprimir / Salvar PDF”. No celular, caso a impressão integrada não abra, toque em “Abrir relatório em nova aba” e use a função Imprimir → Salvar como PDF do navegador. Nenhum arquivo é enviado a servidores externos.</p><iframe ref={printableFrameRef} title="Prévia do cronograma para PDF" srcDoc={printHtml} className="h-[480px] w-full rounded-xl border border-white/10 bg-white sm:h-[580px]" sandbox="allow-modals allow-same-origin"/></section>}
     {error&&<div role="alert" className="flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300"><AlertTriangle size={16}/>{error}</div>}
+    {current&&current.tasks.some(task=>!task.composition.labor.length)&&
+      <section role="region" aria-label="Etapas SINAPI pendentes de horas-homem" className={`${tile} space-y-3 border-amber-500/25 p-4`}>
+        <h2 className="text-sm font-bold text-amber-200">Etapas encontradas online — falta dimensionar HH</h2>
+        <p className="text-xs leading-relaxed text-slate-300">Códigos e descrições podem ser registrados antes do relatório analítico, mas as datas ficam pendentes. Ao importar uma composição com <strong>o mesmo código e unidade</strong>, aplique seus coeficientes para calcular equipe e duração.</p>
+        {current.tasks.filter(task=>!task.composition.labor.length).map(task=>{
+          const source=imported.find(c=>c.code===task.composition.code&&sameServiceUnit(c.unit,task.composition.unit)&&c.labor.length>0);
+          return <div key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 p-3">
+            <span className="min-w-0 text-xs text-slate-200"><strong>SINAPI {task.composition.code}</strong> · {task.composition.description}</span>
+            {source?<button type="button" className="min-h-10 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white" onClick={()=>completePendingSinapiTask(task,source)}>Aplicar coeficientes analíticos</button>
+              :<span className="text-[11px] text-amber-200">Aguardando fonte analítica da mesma composição</span>}
+          </div>;
+        })}
+      </section>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
       <section className={`${tile} space-y-3 p-4`}><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Etapas e equipes</h2><p className="mt-1 text-[11px] text-slate-400">Defina a quantidade real de profissionais por função em cada serviço.</p></div><button type="button" disabled={!report.entries.length} onClick={()=>exportScheduleCSV(current)} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-40"><Download size={14}/> Exportar CSV</button><button type="button" disabled={!report.entries.length} onClick={()=>setPrintHtml(buildScheduleDocument(current,attached,company))} className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 px-3 py-2 text-xs text-orange-200 disabled:opacity-40">Preparar PDF</button></div>
       {report.entries.length===0?<div className="py-6 text-center text-xs text-slate-500">Nenhuma etapa adicionada. Importe a composição SINAPI e informe a quantidade para começar.</div>:report.entries.map((item,index)=><article key={item.task.id} className="space-y-3 rounded-xl border border-white/10 bg-[#0b0e15] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-[10px] font-semibold uppercase text-orange-300">Etapa {index+1} · código {item.task.composition.code}</p><h3 className="mt-1 text-xs font-semibold leading-snug text-white">{item.task.composition.description}</h3><p className="mt-1 text-[10px] text-slate-500">Origem: {item.task.composition.sourceFile} · {item.task.composition.sourceSheet} · {sinapiOriginLabel(item.task.composition)}</p></div><div className="flex shrink-0 items-center gap-1"><button disabled={index===0} title="Mover etapa acima" onClick={()=>shiftTask(index,-1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowUp size={14}/></button><button disabled={index===report.entries.length-1} title="Mover etapa abaixo" onClick={()=>shiftTask(index,1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowDown size={14}/></button><button title="Remover etapa" onClick={()=>removeTask(item.task.id)} className="rounded-lg p-1.5 text-rose-300 hover:bg-rose-500/10"><Trash2 size={15}/></button></div></div>
-        <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-slate-400">Quantidade ({item.task.composition.unit})<input className={`${control} mt-1`} type="text" inputMode="decimal" value={toInput(item.task.quantity)} onChange={e=>{const q=decimalFromInput(e.target.value); if(q<measuredQuantity(item.task)){setError('Não é possível reduzir a quantidade abaixo do avanço físico já medido.');return;}changeTask({...item.task,quantity:q});}}/></label><div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] text-slate-400">Horas-homem totais</p><strong className="text-sm">{fmt(item.totalHH,3)} HH</strong></div></div>
+        <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-slate-400">Quantidade ({item.task.composition.unit})<EditableNumericInput aria-label={`Quantidade da etapa ${item.task.composition.code}`} className={`${control} mt-1`} value={item.task.quantity} required min={0.000001} onCommit={q=>{if(q<measuredQuantity(item.task)){setError('Não é possível reduzir a quantidade abaixo do avanço físico já medido.');return;}changeTask({...item.task,quantity:q});setError('');}}/></label><div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] text-slate-400">Horas-homem totais</p><strong className="text-sm">{fmt(item.totalHH,3)} HH</strong></div></div>
         {current.scheduleMode==='dependencias'&&<div className="rounded-xl border border-white/10 p-3"><p className="text-[11px] font-semibold text-slate-200">Atividades predecessoras</p><p className="mt-1 text-[10px] text-slate-500">Sem predecessoras = pode começar no início da obra. O sistema bloqueia ciclos e dependências inválidas.</p><div className="mt-2 max-h-40 space-y-1 overflow-y-auto">{current.tasks.filter(t=>t.id!==item.task.id).length===0?<span className="text-[10px] text-slate-500">Nenhuma outra etapa.</span>:current.tasks.filter(t=>t.id!==item.task.id).map(t=><label key={t.id} className="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" checked={(item.task.dependencies||[]).includes(t.id)} onChange={e=>changeTask({...item.task,dependencies:e.target.checked?[...new Set([...(item.task.dependencies||[]),t.id])]:(item.task.dependencies||[]).filter(id=>id!==t.id)})}/>{t.composition.code} · {t.composition.description.slice(0,62)}</label>)}</div></div>}
         {attached&&<label className="block text-[11px] text-slate-400">Item financeiro correspondente no orçamento (opcional)<select className={`${control} mt-1`} value={item.task.quoteItemId||''} onChange={e=>changeTask({...item.task,quoteItemId:e.target.value||undefined})}><option value="">Sem correspondência financeira</option>{attached.items.map(q=><option key={q.id} value={q.id}>{q.name} · {fmt(q.quantity)} {q.unit} · R$ {fmt(q.totalPrice)}</option>)}</select><span className="mt-1 block text-[10px] text-slate-500">Só entra no físico-financeiro se a unidade e a quantidade forem compatíveis, sem associar o mesmo item duas vezes.</span></label>}
-        <div className="space-y-2">{item.labor.map((l,i)=><div className="flex items-center gap-2" key={`${l.code}:${l.role}`}><div className="min-w-0 flex-1"><p className="truncate text-[11px] text-slate-300" title={l.role}>{l.role}</p><p className="text-[10px] text-slate-500">{fmt(l.hours,3)} h necessárias</p></div><label className="w-24 text-[10px] text-slate-400">Pessoas<input type="number" min="1" max="500" step="1" className={`${control} mt-1`} value={item.task.crew[`${l.code}:${l.role}`]||''} onChange={e=>changeTask({...item.task,crew:{...item.task.crew,[`${l.code}:${l.role}`]:Number(e.target.value)}})}/></label></div>)}</div>
+        <div className="space-y-2">{item.labor.map((l,i)=><div className="flex items-center gap-2" key={`${l.code}:${l.role}`}><div className="min-w-0 flex-1"><p className="truncate text-[11px] text-slate-300" title={l.role}>{l.role}</p><p className="text-[10px] text-slate-500">{fmt(l.hours,3)} h necessárias</p></div><label className="w-24 text-[10px] text-slate-400">Pessoas<EditableNumericInput aria-label={`Pessoas: ${l.role}`} integer min={1} max={500} required className={`${control} mt-1`} value={item.task.crew[`${l.code}:${l.role}`]||0} emptyAsBlank onCommit={people=>changeTask({...item.task,crew:{...item.task.crew,[`${l.code}:${l.role}`]:people}})}/></label></div>)}</div>
         <div className="space-y-2 rounded-xl border border-white/10 bg-[#141822] p-3">
           <div className="flex items-center justify-between text-[11px]"><strong>Execução física comprovada por medições</strong><span>{fmt(measuredQuantity(item.task),3)} / {fmt(item.task.quantity,3)} {item.task.composition.unit} ({fmt(progressPercent(item.task)||0,1)}%)</span></div>
           <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${progressPercent(item.task)||0}%`}}/></div>
