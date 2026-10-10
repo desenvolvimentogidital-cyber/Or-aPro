@@ -107,7 +107,9 @@ export const QuoteBuilderView: React.FC = () => {
           unitCost: catalogItem.cost,
           costConfirmed: catalogItem.costConfirmed,
           imageUrl: catalogItem.imageUrl,
-          laborType: catalogItem.laborType
+          laborType: catalogItem.laborType,
+          catalogItemId: catalogItem.id,
+          sinapiComposition: catalogItem.sinapiComposition
         }
       ];
     });
