@@ -27,6 +27,9 @@ test('busca reconhece plural, acentos e codigo explicitamente pesquisado',()=>{
  assert.equal(findCatalogSinapiCandidates({name:'Trocar tomadas',unit:'UN'},[fixture])[0]?.code,'100001');
  assert.equal(findCatalogSinapiCandidates({name:'Serviço elétrico',unit:'serviço'},[other,fixture],'instalação tomada')[0]?.code,'100001');
  assert.equal(findCatalogSinapiCandidates({name:'Outro serviço',unit:'serviço'},[other,fixture],'100001')[0]?.code,'100001');
+ assert.equal(findCatalogSinapiCandidates({name:'',unit:''},[other,fixture],'100')[0]?.code,'100001');
+ assert.equal(findCatalogSinapiCandidates({name:'',unit:''},[other,fixture],'SINAPI 100001')[0]?.code,'100001');
+ assert.equal(findCatalogSinapiCandidates({name:'',unit:''},[other,fixture],'tomada')[0]?.code,'100001');
  assert.equal(findCatalogSinapiCandidates({name:'Pintura de parede',unit:'m²'},[fixture]).length,0);
 });
 test('somente associação com horas, fonte, competência e UF validas sobrevive ao reload',()=>{
