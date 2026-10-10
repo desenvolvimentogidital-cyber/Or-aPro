@@ -12,3 +12,18 @@ test('PDF escapa HTML do usuário sem executá-lo',()=>{
  assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
  assert.ok(!html.includes('<script>alert(1)</script>'));
 });
+
+test('PDF mantém cronograma parcial visível sem inventar data final da obra',()=>{
+ const unfinished={...schedule,tasks:[...schedule.tasks,{
+  id:'t2',composition:{code:'101493',description:'Entrada de energia',unit:'UN',
+   labor:[],sourceFile:'Catálogo textual',sourceSheet:'Pesquisa'},
+  quantity:6,crew:{},progress:[]
+ }]};
+ const html=buildScheduleDocument(unfinished);
+ assert.match(html,/Planejamento parcial: 1 atividade/);
+ assert.match(html,/Planejamento visual · dias úteis 1/);
+ assert.match(html,/Pendente/);
+ assert.match(html,/Pico simultâneo previsto/);
+ assert.match(html,/Profissionais|profissionais/);
+ assert.match(html,/Produtividade planejada/);
+});
