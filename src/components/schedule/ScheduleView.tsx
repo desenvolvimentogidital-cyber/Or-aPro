@@ -38,13 +38,16 @@ function exportScheduleCSV(schedule:WorkSchedule){
   const a=document.createElement('a');a.href=url;a.download=`orcapro-cronograma-${schedule.id}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 export const ScheduleView:React.FC=()=>{
-  const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,catalog,updateCatalogItem,company,ready,syncStatus}=useApp();
+  const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,catalog,updateCatalogItem,sinapiSession,setSinapiSession,company,ready,syncStatus}=useApp();
   const {theme}=useTheme();
-  const [imported,setImported]=useState<SinapiComposition[]>([]);
-  const [importInfo,setImportInfo]=useState('');
-  const [reference,setReference]=useState('');
-  const [regionalUF,setRegionalUF]=useState<SinapiUF | ''>('');
-  const [regionalRegime,setRegionalRegime]=useState<SinapiRegime | ''>('');
+  const imported=sinapiSession.compositions;
+  const [importInfo,setImportInfo]=useState(sinapiSession.info);
+  const reference=sinapiSession.reference;
+  const regionalUF=sinapiSession.uf;
+  const regionalRegime=sinapiSession.regime;
+  const setReference=(value:string)=>setSinapiSession(v=>({...v,reference:value}));
+  const setRegionalUF=(value:SinapiUF|'')=>setSinapiSession(v=>({...v,uf:value}));
+  const setRegionalRegime=(value:SinapiRegime|'')=>setSinapiSession(v=>({...v,regime:value}));
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [search,setSearch]=useState('');
@@ -159,16 +162,16 @@ export const ScheduleView:React.FC=()=>{
   };
   const loadFiles=async(files?:FileList|null)=>{
     if(!files?.length)return;
-    setBusy(true);setError('');setImportInfo('');setImported([]);setSelectedComposition('');setReference('');setRegionalUF('');setRegionalRegime('');
+    setBusy(true);setError('');setImportInfo('');setSinapiSession({compositions:[],reference:'',uf:'',regime:'',info:''});setSelectedComposition('');
     try{
       const reports=[];
       for(const file of Array.from(files))reports.push({file:file.name,report:await importSinapiFile(file)});
       const result=mergeSinapiReports(reports.map(f=>f.report));
-      setImported(result.compositions);
       setSelectedComposition('');
-      setReference(result.reference||'');
       const names=reports.map(r=>`${r.file}: ${r.report.compositions.length} composição(ões) elegíveis`).join(' | ');
-      setImportInfo(`${names}. Total: ${result.compositions.length} serviço(s) com HH identificadas. ${result.issues.join(' ')}`);
+      const info=`${names}. Total: ${result.compositions.length} serviço(s) com HH identificadas. ${result.issues.join(' ')}`;
+      setImportInfo(info);
+      setSinapiSession({compositions:result.compositions,reference:result.reference||'',uf:'',regime:'',info});
     }catch(e){setError(e instanceof Error?e.message:'Falha na leitura da planilha.');}
     finally{setBusy(false);if(fileRef.current)fileRef.current.value='';}
   };
@@ -312,7 +315,7 @@ export const ScheduleView:React.FC=()=>{
       <a href="https://www.caixa.gov.br/poder-publico/modernizacao-gestao/sinapi/Paginas/default.aspx" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-orange-300 hover:underline">Abrir fonte oficial SINAPI (CAIXA) <ExternalLink size={12}/></a>
       <p className="text-[11px] text-amber-300/90">Importante: o percentual de mão de obra não representa horas-homem. Prazo por serviço depende das composições analíticas, quantitativo, equipe e jornada reais.</p>
       {importInfo&&<p className="rounded-xl bg-white/5 p-3 text-[11px] leading-relaxed text-slate-300">{importInfo}</p>}
-      {imported.length>0&&<><p className="text-[11px] text-slate-400">As composições importadas ficam disponíveis nesta sessão. Ao adicionar uma etapa, o coeficiente e a fonte ficam salvos no cronograma no seu Supabase. Reimporte a planilha para escolher novos serviços depois de fechar o aplicativo.</p>
+      {imported.length>0&&<><p className="text-[11px] text-slate-400">As composições importadas continuam disponíveis enquanto você navega entre Serviços, Orçamentos e Cronograma nesta sessão. Ao vincular um serviço do catálogo à composição, ela fica salva nesse serviço para o próximo acesso. Para novos serviços, após fechar a página, importe a planilha novamente.</p>
       <label className="relative block"><Search size={15} className="absolute left-3 top-3.5 text-slate-500"/><input className={`${control} pl-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por código ou descrição"/></label>
       <div className="max-h-64 space-y-1 overflow-y-auto">{filtered.map(c=><button type="button" key={`${c.code}|${c.unit}`} onClick={()=>setSelectedComposition(`${c.code}|${c.unit}`)} className={`w-full rounded-xl border p-3 text-left ${selectedComposition===`${c.code}|${c.unit}`?'border-orange-500/60 bg-orange-500/10':'border-white/5 bg-[#0d1119]'}`}><div className="flex items-start justify-between gap-2"><strong className="text-xs text-slate-200">{c.code} · {c.unit}</strong><span className="text-[11px] text-orange-300">{fmt(c.labor.reduce((s,l)=>s+l.hoursPerUnit,0),4)} HH/{c.unit}</span></div><p className="mt-1 text-[11px] leading-snug text-slate-400">{c.description}</p></button>)}</div>
       {selected&&<div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-3"><div><strong className="text-xs">{selected.description}</strong><p className="mt-1 text-[10px] text-slate-400">{selected.labor.map(l=>`${l.role}: ${fmt(l.hoursPerUnit,5)} h/${selected.unit}`).join(' · ')}</p></div>
