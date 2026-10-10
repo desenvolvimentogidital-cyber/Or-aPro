@@ -420,7 +420,7 @@ export const ScheduleView:React.FC=()=>{
             <input className={`${control} mt-1`} type="text" inputMode="decimal" aria-label="Quantidade na unidade SINAPI" value={catalogQuantity} onChange={e=>setCatalogQuantity(e.target.value)} placeholder="Ex.: 12"/>
           </label>
           <label className="block text-xs text-slate-200">Prazo desejado em dias úteis (opcional)
-            <input className={`${control} mt-1`} type="number" min="1" max="10000" step="1" aria-label="Prazo para serviço do catálogo" value={catalogTargetDays} onChange={e=>setCatalogTargetDays(e.target.value)} placeholder="Ex.: 3"/>
+            <input className={`${control} mt-1`} type="text" inputMode="numeric" aria-label="Prazo para serviço do catálogo" value={catalogTargetDays} onChange={e=>setCatalogTargetDays(e.target.value)} placeholder="Ex.: 3"/>
           </label>
         </div>
         {!usableSinapiComposition(selectedCatalogComposition)&&<p className="text-[11px] text-amber-200">Para confirmar esta composição recém-importada, preencha competência, UF e encargos na seção de importação acima. O código e as HH vêm da planilha, não do nome do serviço.</p>}
@@ -478,7 +478,7 @@ export const ScheduleView:React.FC=()=>{
               <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet}</p>
               {chosen.labor.map(l=><p key={`${l.code}:${l.role}`} className="text-[11px] text-slate-300">{l.role}: <strong>{fmt(l.hoursPerUnit,5)} HH/{chosen.unit}</strong> × {fmt(item.quantity,2)} {item.unit} = {fmt(l.hoursPerUnit*item.quantity,2)} HH</p>)}
               <label className="block text-[11px] text-slate-400">Prazo desejado em dias úteis (opcional; deixe vazio para simular 1 pessoa por profissão)
-                <input className={`${control} mt-1`} type="number" min="1" max="10000" step="1" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
+                <input className={`${control} mt-1`} type="text" inputMode="numeric" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
               </label>
               {simulation && <div className="rounded-lg bg-white/5 p-2">
                 <p className="text-[11px] font-semibold text-slate-200">Equipe simulada: {simulation.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}</p>
