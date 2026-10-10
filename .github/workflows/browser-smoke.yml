@@ -35,6 +35,8 @@ jobs:
           exit 1
       - name: Smoke UI mobile e desktop
         run: node test/e2e/smoke.mjs
+      - name: Edicao numerica Android em catalogo, custos e cronograma
+        run: node test/e2e/numeric-editing.mjs
       - name: Compilar regras para integração
         run: npm run test:logic
       - name: PDFs reais Chromium (72 itens e 90 etapas)
