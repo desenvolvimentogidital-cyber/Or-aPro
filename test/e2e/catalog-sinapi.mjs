@@ -60,8 +60,12 @@ try{
  await globalSearch.fill('');
  await region.getByRole('group',{name:'Selecionar serviço do catálogo'})
    .getByRole('button',{name:/Instalar tomada na parede/}).click();
- await region.getByText(/Ainda não há composições analíticas/).waitFor();
- await page.locator('input[type=file][accept*=".xlsx"]').setInputFiles({
+ // Com o painel fechado, o CTA da busca precisa abrir de verdade o seletor de arquivos Android.
+ await page.getByRole('button',{name:/Importar composições SINAPI/}).click();
+ const chooserPromise=page.waitForEvent('filechooser');
+ await region.getByRole('button',{name:/Carregar composição SINAPI do arquivo/}).click();
+ const chooser=await chooserPromise;
+ await chooser.setFiles({
    name:'sinapi-teste-ficticio.csv',mimeType:'text/csv',buffer:Buffer.from(csv,'utf8')
  });
  await page.getByText(/Total: 2 serviço/).waitFor({timeout:15000});
