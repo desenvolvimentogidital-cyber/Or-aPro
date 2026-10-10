@@ -1,4 +1,5 @@
 import type { WorkSchedule, ScheduleTask } from '../types/schedule';
+import {laborDemandForQuantity} from './quoteSchedule.js';
 
 export type TaskEstimate = {task: ScheduleTask; totalHH: number; days: number | null; start: string | null; end: string | null; warnings: string[]; labor: {role: string; code: string; hours: number; workers: number}[]};
 export type ScheduleEstimate = {entries: TaskEstimate[]; totalHH: number; workingDays: number | null; finishDate: string | null; pending: number};
@@ -82,8 +83,16 @@ export function estimateSchedule(plan: WorkSchedule): ScheduleEstimate {
     }
     state.set(index, 'visiting');
     const warnings: string[] = [];
-    const labor = (task.composition?.labor || []).map(l => ({role: l.role, code: l.code, hours: l.hoursPerUnit * task.quantity, workers: task.crew?.[`${l.code}:${l.role}`] || 0}));
     const validQuantity = Number.isFinite(task.quantity) && task.quantity > 0;
+    let labor: TaskEstimate['labor'] = [];
+    // O mesmo trabalhador não pode ser contado duas vezes quando várias linhas
+    // analíticas referem a mesma função: consolide antes de calcular gargalos.
+    try {
+      labor = laborDemandForQuantity(task.composition, task.quantity).map(l => ({
+        role:l.role, code:l.code, hours:l.hours,
+        workers:task.crew?.[`${l.code}:${l.role}`] ?? 0
+      }));
+    } catch {/* Os avisos abaixo mantêm a etapa pendente, sem inventar prazo. */}
     const validLabor = labor.length > 0 && labor.every(l => Number.isFinite(l.hours) && l.hours > 0);
     if (!validQuantity) warnings.push('Informe quantidade maior que zero.');
     if (!validLabor) warnings.push('Coeficiente de mão de obra inválido ou ausente.');
@@ -124,4 +133,43 @@ export function estimateSchedule(plan: WorkSchedule): ScheduleEstimate {
   const finishDate = pending || !entries.length ? null : entries.reduce((max, e) => e.end! > max ? e.end! : max, entries[0].end!);
   const workingDays = finishDate && startOfWork ? workingDaysBetween(startOfWork, finishDate, holidays) : null;
   return {entries, totalHH, workingDays, finishDate, pending};
+}
+
+/** Pico mínimo de pessoas simultâneas exigidas pelo plano em cada profissão.
+ * Conta equipes de etapas paralelas SOMADAS, sem supor que uma pessoa possa
+ * executar dois serviços no mesmo dia. Não comprova disponibilidade real.
+ */
+export function peakCrewDemand(report: ScheduleEstimate): {
+  total: number;
+  roles: {code:string;role:string;workers:number}[];
+} {
+  type Event = {date:string; key:string;delta:number;role:string;code:string};
+  const events:Event[]=[];
+  for(const entry of report.entries) {
+    if(!entry.start || !entry.end || entry.days===null)continue;
+    const next=parse(entry.end);
+    next.setUTCDate(next.getUTCDate()+1);
+    for(const labor of entry.labor) {
+      if(!Number.isSafeInteger(labor.workers)||labor.workers<1)continue;
+      const key=`${labor.code}:${labor.role}`;
+      events.push({date:entry.start,key,delta:labor.workers,role:labor.role,code:labor.code});
+      events.push({date:key(next),key,delta:-labor.workers,role:labor.role,code:labor.code});
+    }
+  }
+  events.sort((a,b)=>a.date.localeCompare(b.date));
+  const active=new Map<string,number>();
+  const peak=new Map<string,{code:string;role:string;workers:number}>();
+  let overall=0;
+  for(let i=0;i<events.length;) {
+    const date=events[i].date;
+    while(i<events.length && events[i].date===date) {
+      const event=events[i++];
+      const count=(active.get(event.key)||0)+event.delta;
+      active.set(event.key,count);
+      if(count>(peak.get(event.key)?.workers||0))
+        peak.set(event.key,{code:event.code,role:event.role,workers:count});
+    }
+    overall=Math.max(overall,[...active.values()].reduce((sum,n)=>sum+Math.max(0,n),0));
+  }
+  return {total:overall,roles:[...peak.values()].sort((a,b)=>b.workers-a.workers || a.role.localeCompare(b.role))};
 }
