@@ -37,7 +37,7 @@ await page.route('**/rest/v1/orcapro_workspaces**',route=>{
 });
 async function openFromMore(button){
   await page.getByRole('navigation',{name:'Navegação Principal'}).getByRole('button',{name:'Mais'}).click();
-  await page.getByRole('button',{name:button}).click();
+  await page.getByRole('button',{name:button,exact:true}).click();
 }
 try {
   await page.goto(base,{waitUntil:'domcontentloaded'});
