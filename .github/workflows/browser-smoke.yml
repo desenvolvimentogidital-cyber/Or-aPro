@@ -45,6 +45,8 @@ jobs:
         run: node test/e2e/auto-layout.mjs
       - name: Quatro itens do orcamento para cronograma SINAPI (API isolada)
         run: node test/e2e/quote-to-schedule.mjs
+      - name: Servico salvo no catalogo para SINAPI e cronograma (Android isolado)
+        run: node test/e2e/catalog-sinapi.mjs
       - name: Datas reais do Gantt e visualizacao de PDF
         run: node test/e2e/schedule-ui.mjs
       - name: Integridade de cliente, financeiro, backup e conflitos (REST isolado)
