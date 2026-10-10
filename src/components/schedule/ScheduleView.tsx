@@ -82,6 +82,9 @@ export const ScheduleView:React.FC=()=>{
   const [catalogQuoteItemId,setCatalogQuoteItemId]=useState('');
   const [showImport,setShowImport]=useState(true);
   const [savedCompositions,setSavedCompositions]=useState<SinapiComposition[]>([]);
+  const [quoteSavedCompositions,setQuoteSavedCompositions]=useState<SinapiComposition[]>([]);
+  const [quoteLibraryStatus,setQuoteLibraryStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const [quoteLibraryError,setQuoteLibraryError]=useState('');
   const [savedLibraryCount,setSavedLibraryCount]=useState<number|null>(null);
   const [libraryStatus,setLibraryStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
   const [libraryError,setLibraryError]=useState('');
@@ -117,7 +120,8 @@ export const ScheduleView:React.FC=()=>{
   const activeQuoteTerm=activeQuoteItem
     ? quoteSearch[activeQuoteItem]?.trim()||attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
     : '';
-  const savedLibraryTerm=(activeQuoteItem?activeQuoteTerm:(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim())).slice(0,100);
+  // Consultas independentes: abrir Configurar no orçamento não pode bloquear a busca livre do catálogo.
+  const savedLibraryTerm=(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim()).slice(0,100);
   useEffect(()=>{
     if(!session)return;
     let cancelled=false;
@@ -136,9 +140,25 @@ export const ScheduleView:React.FC=()=>{
     },350);
     return()=>{window.clearTimeout(id);controller.abort();};
   },[session?.user.id,session?.access_token,savedLibraryTerm,savedLibraryCount]);
+  useEffect(()=>{
+    if(!session||!activeQuoteItem||activeQuoteTerm.trim().length<2){
+      setQuoteSavedCompositions([]);setQuoteLibraryStatus('idle');setQuoteLibraryError('');return;
+    }
+    const controller=new AbortController();
+    setQuoteLibraryStatus('loading');setQuoteLibraryError('');
+    const id=window.setTimeout(()=>{
+      searchSavedSinapi(session,activeQuoteTerm,controller.signal).then(rows=>{
+        if(!controller.signal.aborted){setQuoteSavedCompositions(rows);setQuoteLibraryStatus('ready');}
+      }).catch(e=>{
+        if(!controller.signal.aborted){setQuoteSavedCompositions([]);setQuoteLibraryStatus('error');
+          setQuoteLibraryError(e instanceof Error?e.message:'Falha ao consultar a base SINAPI salva.');}
+      });
+    },280);
+    return()=>{window.clearTimeout(id);controller.abort();};
+  },[session?.user.id,session?.access_token,activeQuoteItem,activeQuoteTerm,savedLibraryCount]);
   const physicalMoney=current?physicalFinancial(current,attached):null;
-  const filtered=useMemo(()=>[...imported,...savedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,search]);
-  const selected=[...imported,...savedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
+  const filtered=useMemo(()=>[...imported,...savedCompositions,...quoteSavedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,quoteSavedCompositions,search]);
+  const selected=[...imported,...savedCompositions,...quoteSavedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
   const catalogServices=useMemo(()=>{
     const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     return catalog.filter(item=>item.type==='servico' &&
@@ -176,23 +196,28 @@ export const ScheduleView:React.FC=()=>{
     // A importação atual é prioritária; composições antigas são mostradas com fonte explícita.
     imported.forEach(collect);
     savedCompositions.filter(isAnalyticalSinapi).forEach(collect);
+    quoteSavedCompositions.filter(isAnalyticalSinapi).forEach(collect);
     catalog.forEach(item=>{if(usableSinapiComposition(item.sinapiComposition))collect(item.sinapiComposition);});
     schedules.forEach(schedule=>schedule.tasks.forEach(task=>{
       if(usableSinapiComposition(task.composition))collect(task.composition);
     }));
     return items;
-  },[imported,savedCompositions,catalog,schedules]);
+  },[imported,savedCompositions,quoteSavedCompositions,catalog,schedules]);
   const catalogCandidates=useMemo(()=>{
     // Pesquisa SINAPI funciona SEM exigir seleção prévia no catálogo.
     // Quando não há termo nem serviço escolhido, não despeja milhares de itens no Android.
     if(!selectedCatalogService && !catalogSinapiQuery.trim())return [];
     const target=selectedCatalogService||{name:'',unit:''};
     const results=findCatalogSinapiCandidates(target,knownCompositions,catalogSinapiQuery,50);
+    // A consulta SQL reconhece termos comerciais como "padrão monofásico" e
+    // devolve "ENTRADA DE ENERGIA ELÉTRICA MONOFÁSICA". Não filtre novamente pelo nome.
+    const ranked=[...savedCompositions.filter(isAnalyticalSinapi),...results].filter((c,i,all)=>
+      all.findIndex(other=>compositionIdentity(other)===compositionIdentity(c))===i).slice(0,50);
     const linked=selectedCatalogService?.sinapiComposition;
     if(usableSinapiComposition(linked) && !catalogSinapiQuery.trim() &&
-       !results.some(c=>compositionIdentity(c)===compositionIdentity(linked)))
-      return [linked,...results].slice(0,50);
-    return results;
+       !ranked.some(c=>compositionIdentity(c)===compositionIdentity(linked)))
+      return [linked,...ranked].slice(0,50);
+    return ranked;
   },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
   const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
   const filteredOnlineResults=onlineResults.filter(row=>
@@ -378,13 +403,14 @@ export const ScheduleView:React.FC=()=>{
       setError('A composição analítica deve ter o mesmo código e unidade da etapa pendente.');return;
     }
     try{
+      const sourceReference=importedComposition.reference||reference.trim();
       const composition=usableSinapiComposition(importedComposition)?importedComposition:
         withSinapiProvenance(importedComposition,{
-          reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
+          reference:sourceReference,uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
         });
       const result=simulateCrewForQuote(composition,task.quantity,current.hoursPerDay,current.efficiency);
       changeTask({...task,composition,crew:result.crew,
-        notes:(task.notes||'')+' Coeficientes analíticos confirmados na planilha importada; revisar equipe.'});
+        notes:(task.notes||'')+' Coeficientes analíticos confirmados a partir da referência SINAPI selecionada; revisar equipe.'});
       setError('');
       setImportInfo(`Etapa SINAPI ${composition.code} recebeu coeficientes analíticos reais. Revise a equipe inicial e o prazo simulado.`);
     }catch(e){setError(e instanceof Error?e.message:'Não foi possível completar o dimensionamento da etapa.');}
@@ -466,6 +492,10 @@ export const ScheduleView:React.FC=()=>{
           <button type="button" onClick={add} className="min-h-11 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white">Criar cronograma</button>
         </div>}
       </div>
+      <p className="text-xs text-slate-300">{savedLibraryCount!==null
+        ? `Biblioteca SINAPI recuperada: ${savedLibraryCount.toLocaleString('pt-BR')} composições persistidas no Supabase.`
+        : 'Verificando biblioteca SINAPI persistida no Supabase…'}</p>
+      {libraryStatus==='error'&&<p role="alert" className="text-xs text-rose-300">A busca SINAPI não pôde consultar sua base: {libraryError}</p>}
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="min-w-0 space-y-2">
           <label className="block text-xs font-semibold text-slate-200">1. Serviço do catálogo (opcional)
@@ -491,8 +521,10 @@ export const ScheduleView:React.FC=()=>{
           <div className="space-y-2" aria-live="polite">
             {knownCompositions.length===0
               ?<div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
-                <p><strong>Campo pronto para digitar.</strong> Ainda não existe uma base analítica carregada nesta conta. Para resultados sem planilha, a consulta online de terceiros é exibida logo abaixo.</p>
-                <p>Para calcular HH e prazos reais, é preciso ter a composição analítica com coeficientes. A consulta online textual identifica código, descrição e unidade; por si só não permite calcular equipe.</p>
+                <p><strong>Busca SINAPI no Supabase.</strong> {savedLibraryCount && savedLibraryCount>0
+                  ? `Há ${savedLibraryCount.toLocaleString('pt-BR')} composições analíticas persistidas. Digite um nome ou código para visualizar horas-homem verificáveis.`
+                  : libraryStatus==='loading'?'Pesquisando a biblioteca SINAPI salva…':libraryStatus==='error'?'A biblioteca SINAPI não respondeu. Verifique a conexão e tente novamente.':'Aguarde a verificação da biblioteca ou importe o Analítico quando necessário.'}</p>
+                <p>A biblioteca própria permite calcular HH quando você escolhe uma composição analítica compatível. A pesquisa de terceiros é uma alternativa apenas textual, sem coeficientes.</p>
                 <button type="button" onClick={()=>{setShowImport(true);fileRef.current?.click();}}
                   className="min-h-11 w-full rounded-xl border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-center font-bold text-orange-100">
                   <Upload size={15} className="mr-1 inline"/> Carregar composição SINAPI do arquivo
@@ -598,6 +630,7 @@ export const ScheduleView:React.FC=()=>{
     {attached && current && <section aria-label="Do orçamento para o cronograma" className={`${tile} space-y-3 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
+        <p className="mt-2 text-xs font-medium text-emerald-200">Orçamento vinculado: {attached.number} · {attached.items.length} item(ns). Abra Configurar, escolha a composição SINAPI com a mesma unidade e confirme sua equipe e as HH.</p>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
       {!knownCompositions.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">{savedLibraryCount
@@ -611,8 +644,12 @@ export const ScheduleView:React.FC=()=>{
         const remembered=savedSinapiForQuote(item,catalog);
         const options=remembered && !knownCompositions.some(c=>compositionIdentity(c)===compositionIdentity(remembered))
           ? [...knownCompositions,remembered]:knownCompositions;
-        const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
+        const suggestions=expanded?findCatalogSinapiCandidates(item,options,query,20)
           .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
+        const matches=[...(expanded?quoteSavedCompositions.filter(c=>
+          isAnalyticalSinapi(c)&&sameServiceUnit(c.unit,item.unit)):[]),...suggestions]
+          .filter((c,i,all)=>all.findIndex(other=>compositionIdentity(c)===compositionIdentity(other))===i)
+          .slice(0,40);
         const selectedKey=quoteComposition[item.id]||'';
         const chosen=options.find(c=>compositionIdentity(c)===selectedKey);
         if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
@@ -647,7 +684,10 @@ export const ScheduleView:React.FC=()=>{
                 {matches.map(c=><option key={compositionIdentity(c)} value={compositionIdentity(c)}>{c.code} · {c.reference||"?"} · {c.description.slice(0,100)}</option>)}
               </select>
             </label>
-             {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição analítica com unidade “{item.unit}” nesta base. Use a busca online ou importe outra referência. Não será atribuído valor financeiro incorreto.</p>}
+             {quoteLibraryStatus==='loading'&&<p role="status" className="text-xs text-orange-200">Consultando biblioteca SINAPI salva para “{activeQuoteTerm}”…</p>}
+             {quoteLibraryStatus==='error'&&<p role="alert" className="text-xs text-rose-300">Erro ao consultar a biblioteca SINAPI: {quoteLibraryError}</p>}
+             {quoteLibraryStatus==='ready'&&<p role="status" className="text-[11px] text-emerald-200">{quoteSavedCompositions.length} composição(ões) da biblioteca SINAPI encontradas por “{activeQuoteTerm}”. Selecione o código e confira a descrição técnica.</p>}
+             {!matches.length && quoteLibraryStatus==='ready' && <p className="text-[11px] text-amber-200">Nenhuma composição com unidade compatível “{item.unit}” para o termo. Experimente “entrada energia monofásica”, “chuveiro”, “tomada” ou o código SINAPI. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
@@ -690,13 +730,30 @@ export const ScheduleView:React.FC=()=>{
     {current&&current.tasks.some(task=>!task.composition.labor.length)&&
       <section role="region" aria-label="Etapas SINAPI pendentes de horas-homem" className={`${tile} space-y-3 border-amber-500/25 p-4`}>
         <h2 className="text-sm font-bold text-amber-200">Etapas encontradas online — falta dimensionar HH</h2>
-        <p className="text-xs leading-relaxed text-slate-300">Códigos e descrições podem ser registrados antes do relatório analítico, mas as datas ficam pendentes. Ao importar uma composição com <strong>o mesmo código e unidade</strong>, aplique seus coeficientes para calcular equipe e duração.</p>
+        <p className="text-xs leading-relaxed text-slate-300">Os códigos já criados como etapas pendentes podem receber HH da biblioteca SINAPI salva no Supabase. Não precisa recriar o orçamento. Busque o mesmo código e unidade, confirme UF e encargos e aplique os coeficientes reais.</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-[11px] text-slate-300">UF para completar as etapas
+            <select aria-label="UF para etapas pendentes" className={`${control} mt-1`} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF|'')}>
+              <option value="">Escolher UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] text-slate-300">Encargos para completar as etapas
+            <select aria-label="Encargos para etapas pendentes" className={`${control} mt-1`} value={regionalRegime} onChange={e=>setRegionalRegime(e.target.value as SinapiRegime|'')}>
+              <option value="">Escolher regime</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
+            </select>
+          </label>
+        </div>
         {current.tasks.filter(task=>!task.composition.labor.length).map(task=>{
-          const source=imported.find(c=>c.code===task.composition.code&&sameServiceUnit(c.unit,task.composition.unit)&&c.labor.length>0);
+          const source=knownCompositions.find(c=>c.code===task.composition.code&&sameServiceUnit(c.unit,task.composition.unit)&&isAnalyticalSinapi(c));
           return <div key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 p-3">
             <span className="min-w-0 text-xs text-slate-200"><strong>SINAPI {task.composition.code}</strong> · {task.composition.description}</span>
             {source?<button type="button" className="min-h-10 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white" onClick={()=>completePendingSinapiTask(task,source)}>Aplicar coeficientes analíticos</button>
-              :<span className="text-[11px] text-amber-200">Aguardando fonte analítica da mesma composição</span>}
+              :<button type="button" onClick={()=>{
+                setCatalogSinapiQuery(task.composition.code);
+                document.getElementById('orcapro-sinapi-lookup')?.scrollIntoView({behavior:'smooth',block:'start'});
+              }} className="min-h-10 rounded-lg border border-orange-500/40 px-3 py-2 text-xs font-bold text-orange-200">
+                Buscar HH do código {task.composition.code} no Supabase
+              </button>}
           </div>;
         })}
       </section>}
