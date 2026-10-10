@@ -139,6 +139,13 @@ export const QuoteBuilderView: React.FC = () => {
     );
   };
 
+  const handleSetItemQty = (id:string, quantity:number) => {
+    if (!Number.isFinite(quantity) || quantity<=0) return;
+    setItems(prev=>prev.map(item=>item.id===id
+      ? {...item, quantity, totalPrice:quantity*item.unitPrice}
+      : item));
+  };
+
   const handleRemoveItem = (id: string) => {
     setItems(prev => prev.filter(i => i.id !== id));
   };
@@ -322,7 +329,12 @@ export const QuoteBuilderView: React.FC = () => {
                       >
                         -
                       </button>
-                      <span className="text-[11px] font-bold text-white px-1">{item.quantity}</span>
+                      <EditableNumericInput
+                        aria-label={`Quantidade do item ${item.name}`}
+                        className="w-16 rounded-md bg-[#0b0e15] px-1 py-1 text-center text-[11px] font-bold text-white outline-none focus:ring-1 focus:ring-orange-500"
+                        value={item.quantity} min={0.000001} required
+                        onCommit={quantity=>handleSetItemQty(item.id,quantity)}
+                      />
                       <button
                         onClick={() => handleUpdateItemQty(item.id, 1)}
                         className="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-white text-xs font-bold"
