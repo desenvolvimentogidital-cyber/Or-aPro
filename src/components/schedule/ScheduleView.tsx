@@ -403,9 +403,10 @@ export const ScheduleView:React.FC=()=>{
       setError('A composição analítica deve ter o mesmo código e unidade da etapa pendente.');return;
     }
     try{
+      const sourceReference=importedComposition.reference||reference.trim();
       const composition=usableSinapiComposition(importedComposition)?importedComposition:
         withSinapiProvenance(importedComposition,{
-          reference:importedComposition.reference||reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
+          reference:sourceReference,uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
         });
       const result=simulateCrewForQuote(composition,task.quantity,current.hoursPerDay,current.efficiency);
       changeTask({...task,composition,crew:result.crew,
