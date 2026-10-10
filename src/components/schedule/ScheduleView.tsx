@@ -573,7 +573,18 @@ export const ScheduleView:React.FC=()=>{
             <input className={`${control} mt-1`} type="text" inputMode="numeric" aria-label="Prazo para serviço do catálogo" value={catalogTargetDays} onChange={e=>setCatalogTargetDays(e.target.value)} placeholder="Ex.: 3"/>
           </label>
         </div>
-        {!usableSinapiComposition(selectedCatalogComposition)&&<p className="text-[11px] text-amber-200">Para confirmar esta composição recém-importada, preencha competência, UF e encargos na seção de importação acima. O código e as HH vêm da planilha, não do nome do serviço.</p>}
+        {!usableSinapiComposition(selectedCatalogComposition)&&<div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 text-xs text-amber-100">
+          <p>Confirme a UF e o regime da composição analítica ({selectedCatalogComposition.reference||'competência não informada'}) antes de criar a etapa.</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select aria-label="UF para composição analítica" className={control} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF|'')}>
+              <option value="">Escolher UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+            </select>
+            <select aria-label="Encargos para composição analítica" className={control} value={regionalRegime} onChange={e=>setRegionalRegime(e.target.value as SinapiRegime|'')}>
+              <option value="">Escolher regime</option>
+              <option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
+            </select>
+          </div>
+        </div>
         {catalogSimulation.result&&<p className="rounded-lg bg-[#101e2d] p-2.5 text-xs leading-relaxed text-slate-200">Mão de obra SINAPI: <strong>{fmt(catalogSimulation.result.totalHH,2)} HH</strong> · Prazo simulado: <strong>{catalogSimulation.result.projectedDays} dia(s) útil(eis)</strong> · Equipe inicial: {catalogSimulation.result.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}. Confirme a disponibilidade antes de executar.</p>}
         {catalogSimulation.error&&<p role="alert" className="text-xs text-rose-300">{catalogSimulation.error}</p>}
         <button type="button" onClick={appendFromCatalog} disabled={!current||!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> {selectedCatalogService?'Adicionar etapa e salvar vínculo SINAPI':'Adicionar composição ao cronograma'}</button>
@@ -637,7 +648,23 @@ export const ScheduleView:React.FC=()=>{
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
-              <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet}</p>
+              <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet} · {chosen.reference||'competência pendente'}</p>
+              {!usableSinapiComposition(chosen)&&<div className="space-y-2 rounded-lg border border-orange-500/20 bg-[#101824] p-3">
+                <p className="text-xs text-orange-200">Coeficientes HH do arquivo analítico. Confirme a região e o regime; eles não alteram a produtividade declarada.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="text-xs text-slate-300">UF da obra
+                    <select aria-label="UF para etapa do orçamento" className={control} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF|'')}>
+                      <option value="">Escolher UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-300">Encargos sociais
+                    <select aria-label="Encargos para etapa do orçamento" className={control} value={regionalRegime} onChange={e=>setRegionalRegime(e.target.value as SinapiRegime|'')}>
+                      <option value="">Escolher encargos</option>
+                      <option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
               {chosen.labor.map(l=><p key={`${l.code}:${l.role}`} className="text-[11px] text-slate-300">{l.role}: <strong>{fmt(l.hoursPerUnit,5)} HH/{chosen.unit}</strong> × {fmt(item.quantity,2)} {item.unit} = {fmt(l.hoursPerUnit*item.quantity,2)} HH</p>)}
               <label className="block text-[11px] text-slate-400">Prazo desejado em dias úteis (opcional; deixe vazio para simular 1 pessoa por profissão)
                 <input className={`${control} mt-1`} type="text" inputMode="numeric" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
