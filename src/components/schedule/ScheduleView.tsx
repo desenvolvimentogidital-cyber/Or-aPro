@@ -39,7 +39,7 @@ function exportModelCSV(){
 }
 function exportScheduleCSV(schedule:WorkSchedule){
   const results=estimateSchedule(schedule);
-  const data=[['Composição','Descrição','Unidade','Quantidade','HH totais','Dias úteis','Início','Término','Equipe por profissão','Origem SINAPI','Quantidade executada','Avanço (%)'],...results.entries.map(x=>[x.task.composition.code,x.task.composition.description,x.task.composition.unit,String(x.task.quantity),String(x.totalHH),x.days===null?'Pendente':String(x.days),x.start||'',x.end||'',x.labor.map(l=>`${l.role}: ${l.workers} pessoa(s)`).join(' | '),`${x.task.composition.sourceFile} - ${x.task.composition.sourceSheet} - ${sinapiOriginLabel(x.task.composition)}`,String(measuredQuantity(x.task)),String(progressPercent(x.task)??'')])];
+  const data=[['Composição','Especialidade','Descrição','Unidade','Quantidade','HH totais','Dias úteis','Início','Término','Equipe por profissão','Origem SINAPI','Quantidade executada','Avanço (%)'],...results.entries.map(x=>[x.task.composition.code,categoryLabel(x.task.composition),x.task.composition.description,x.task.composition.unit,String(x.task.quantity),String(x.totalHH),x.days===null?'Pendente':String(x.days),x.start||'',x.end||'',x.labor.map(l=>`${l.role}: ${l.workers} pessoa(s)`).join(' | '),`${x.task.composition.sourceFile} - ${x.task.composition.sourceSheet} - ${sinapiOriginLabel(x.task.composition)}`,String(measuredQuantity(x.task)),String(progressPercent(x.task)??'')])];
   const csv='\uFEFF'+data.map(row=>row.map(csvSafe).join(';')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
   const a=document.createElement('a');a.href=url;a.download=`orcapro-cronograma-${schedule.id}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -114,6 +114,15 @@ export const ScheduleView:React.FC=()=>{
   const current=resolveScheduleSelection(schedules,selectedScheduleId);
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
   const staffing=useMemo(()=>report?peakCrewDemand(report):null,[report]);
+  const categorySummary=useMemo(()=>{
+    const grouped=new Map<string,{label:string;steps:number;hh:number}>();
+    for(const entry of report?.entries||[]){
+      const id=categoryOfSinapi(entry.task.composition);
+      const old=grouped.get(id);
+      grouped.set(id,{label:categoryLabel(entry.task.composition),steps:(old?.steps||0)+1,hh:(old?.hh||0)+entry.totalHH});
+    }
+    return [...grouped.values()];
+  },[report]);
   // Um grupo de 15 dias úteis por vez: datas REAIS legíveis, mesmo em obras longas.
   // Mesmo com etapas pendentes, mostre as datas das etapas já dimensionadas.
   // Não atribua término GLOBAL à obra enquanto houver qualquer pendência.
@@ -365,7 +374,8 @@ export const ScheduleView:React.FC=()=>{
     };
     change({tasks:[...current.tasks,newTask]});
     const origin=item.catalogItemId?catalog.find(c=>c.id===item.catalogItemId):undefined;
-    if(origin?.type==='servico' && (!origin.sinapiComposition || compositionIdentity(origin.sinapiComposition)!==compositionIdentity(composition)))
+    if(origin?.type==='servico' && (!origin.sinapiComposition || categoryOfSinapi(origin.sinapiComposition)===categoryOfSinapi(composition)) &&
+      (!origin.sinapiComposition || compositionIdentity(origin.sinapiComposition)!==compositionIdentity(composition)))
       updateCatalogItem({...origin,sinapiComposition:composition});
     setActiveQuoteItem('');setError('');
     setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
@@ -411,9 +421,11 @@ export const ScheduleView:React.FC=()=>{
           compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition)))
         updateCatalogItem({...selectedCatalogService,sinapiComposition:composition});
       setError('');
+      const previousCatalogComposition=selectedCatalogService?.sinapiComposition;
+      const canUpdateCatalog=!!selectedCatalogService && (!previousCatalogComposition || categoryOfSinapi(previousCatalogComposition)===categoryOfSinapi(composition));
       setCatalogNotice(selectedCatalogService
-        ?`Etapa criada: ${selectedCatalogService.name} → SINAPI ${composition.code}. A composição foi salva no catálogo para reutilização. Revise equipe e quantidade.`
-        :`Etapa SINAPI ${composition.code} criada sem vínculo com catálogo ou orçamento. Revise equipe e quantidade.`);
+        ?`Etapa criada: ${selectedCatalogService.name} → SINAPI ${composition.code} (${categoryLabel(composition)}). ${canUpdateCatalog?'Composição associada ao catálogo.':'Composição existente de outra especialidade preservada no catálogo.'} Revise equipe, unidade e quantidade.`
+        :`Etapa SINAPI ${composition.code} (${categoryLabel(composition)}) criada sem vínculo financeiro. Revise equipe e quantidade.`);
       setCatalogQuantity('');
       setCatalogChoice('');
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível associar o serviço SINAPI.');}
@@ -738,7 +750,8 @@ export const ScheduleView:React.FC=()=>{
               <input className={`${control} mt-1`} value={query} onChange={e=>setQuoteSearch(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: alvenaria, drywall, porcelanato, pintura ou código"/>
             </label>
              <button type="button" onClick={()=>{
-               setCatalogSinapiQuery(query.trim()||item.name);
+               setCatalogCategory(quoteCategory[item.id]||'todas');
+               setCatalogSinapiQuery(query.trim() || (quoteCategory[item.id]&&quoteCategory[item.id]!=='todas'?categorySearchHint(quoteCategory[item.id]):item.name));
                setCatalogQuoteItemId(item.id);
                setCatalogQuantity(String(item.quantity));
                setCatalogChoice('');
@@ -834,6 +847,14 @@ export const ScheduleView:React.FC=()=>{
       </section>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
+      {categorySummary.length>0 && <section className={`${tile} space-y-2 p-4`} aria-label="Resumo do cronograma por especialidade">
+        <h2 className="text-sm font-bold">Frentes de trabalho por especialidade</h2>
+        <div className="grid gap-2 sm:grid-cols-2">{categorySummary.map(row=><div key={row.label} className="rounded-lg border border-white/10 p-3">
+          <strong className="block text-xs text-slate-100">{row.label}</strong>
+          <span className="text-[11px] text-slate-300">{row.steps} etapa(s) · {fmt(row.hh,2)} HH</span>
+        </div>)}</div>
+        <p className="text-[11px] text-amber-200">Para evitar dupla contagem, cada composição é contabilizada apenas na sua própria especialidade. Atividades mistas mantêm todas as profissões previstas no Analítico.</p>
+      </section>}
       {staffing && staffing.roles.length>0 && <section aria-label="Dimensionamento de profissionais da obra" className={`${tile} space-y-2 p-4`}>
         <h2 className="flex items-center gap-2 text-sm font-bold"><HardHat size={17} style={{color:theme.primaryColor}}/> Dimensionamento de profissionais</h2>
         <p className="text-xs text-slate-200"><strong>{staffing.total} profissionais simultâneos no pico</strong> previsto para as etapas com prazo definido. O número considera equipes de frentes paralelas somadas no mesmo dia; não é a quantidade de pessoas contratadas.</p>
