@@ -23,11 +23,11 @@ values ('00000000-0000-4000-8000-00000000000a','09/2026','100860',
  'COMPOSICAO DE TESTE SINAPI', 'UN',
  '[{"code":"qa","role":"Profissional de teste","hoursPerUnit":1.2}]'::jsonb,
  'planilha_qa.xlsx','Analítico');
-DO $ BEGIN
+DO $sinapi$ BEGIN
  IF (SELECT count(*) FROM public.orcapro_find_sinapi('100860'))<>1 THEN
    RAISE EXCEPTION 'A conta dona nao consegue pesquisar sua composição SINAPI';
  END IF;
-END $;
+END $sinapi$;
 
 INSERT INTO public.orcapro_shared_quotes
 (token, user_id, quote_id, payload, expires_at)
