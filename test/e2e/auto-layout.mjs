@@ -49,6 +49,11 @@ try{
  const assertPhone=async width=>{
    await page.setViewportSize({width,height:844});
    await bottom.waitFor({state:'visible'});
+   // O container possui uma transicao CSS: medir apenas depois de estabilizar.
+   await page.waitForFunction(w=>{
+     const main=document.querySelector('main');
+     return !!main&&Math.abs(main.getBoundingClientRect().width-w)<3;
+   },width,{timeout:5000});
    assert.equal(await side.isVisible().catch(()=>false),false,'Sidebar desktop nao pode aparecer em '+width);
    const main=await page.locator('main').boundingBox();
    assert.ok(main,'main deve estar visivel');
@@ -92,6 +97,10 @@ try{
  await side.waitFor({state:'visible'});
  assert.equal(await bottom.isVisible(),false,'Navegacao inferior nao deve aparecer no desktop');
  await overview.waitFor();
+ await page.waitForFunction(()=>{
+   const main=document.querySelector('main');
+   return !!main&&main.getBoundingClientRect().width>1000;
+ },undefined,{timeout:5000});
  const wide=await page.locator('main').boundingBox();
  assert.ok(wide.width>1000,'Cronograma web precisa de area ampla, mediu '+wide.width);
  await page.screenshot({path:'artifacts/orcapro-cronograma-auto-web.png',fullPage:true});
