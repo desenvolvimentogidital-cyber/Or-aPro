@@ -334,14 +334,18 @@ export const ScheduleView:React.FC=()=>{
       </div>}</>}
       </>}
     </section>
-    {current&&<section aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
+    <section aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Wrench size={18} className="text-orange-400"/> Meus serviços → SINAPI</h2>
         <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise uma composição SINAPI pelo nome ou código, mesmo sem escolher um serviço antes. Selecione o serviço salvo apenas se quiser associá-lo à composição. A pesquisa consulta somente composições analíticas já carregadas ou vinculadas neste OrçaPro.</p>
+        {!current&&<div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
+          <p className="text-xs text-amber-100">Você pode pesquisar agora. Para adicionar o resultado à obra, crie primeiro um cronograma.</p>
+          <button type="button" onClick={add} className="min-h-11 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white">Criar cronograma</button>
+        </div>}
       </div>
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="min-w-0 space-y-2">
-          <label className="block text-xs font-semibold text-slate-200">1. Serviço salvo no catálogo
+          <label className="block text-xs font-semibold text-slate-200">1. Serviço do catálogo (opcional)
             <input className={`${control} mt-1`} type="search" aria-label="Buscar serviço cadastrado" value={catalogServiceQuery} onChange={e=>setCatalogServiceQuery(e.target.value)} placeholder="Ex.: instalação de tomada, pintura..."/>
           </label>
           <div className="max-h-64 space-y-1.5 overflow-y-auto" role="group" aria-label="Selecionar serviço do catálogo">
@@ -370,6 +374,10 @@ export const ScheduleView:React.FC=()=>{
                   className="min-h-11 w-full rounded-xl border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-center font-bold text-orange-100">
                   <Upload size={15} className="mr-1 inline"/> Carregar composição SINAPI do arquivo
                 </button>
+                <a href="https://www.caixa.gov.br/poder-publico/modernizacao-gestao/sinapi/Paginas/default.aspx"
+                  target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1 font-semibold text-orange-200 underline underline-offset-4">
+                  Consultar a fonte oficial SINAPI (CAIXA) <ExternalLink size={13}/>
+                </a>
               </div>
               :<>
                 <p role="status" className="text-[11px] text-slate-300">
@@ -417,11 +425,11 @@ export const ScheduleView:React.FC=()=>{
         {!usableSinapiComposition(selectedCatalogComposition)&&<p className="text-[11px] text-amber-200">Para confirmar esta composição recém-importada, preencha competência, UF e encargos na seção de importação acima. O código e as HH vêm da planilha, não do nome do serviço.</p>}
         {catalogSimulation.result&&<p className="rounded-lg bg-[#101e2d] p-2.5 text-xs leading-relaxed text-slate-200">Mão de obra SINAPI: <strong>{fmt(catalogSimulation.result.totalHH,2)} HH</strong> · Prazo simulado: <strong>{catalogSimulation.result.projectedDays} dia(s) útil(eis)</strong> · Equipe inicial: {catalogSimulation.result.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}. Confirme a disponibilidade antes de executar.</p>}
         {catalogSimulation.error&&<p role="alert" className="text-xs text-rose-300">{catalogSimulation.error}</p>}
-        <button type="button" onClick={appendFromCatalog} disabled={!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> {selectedCatalogService?'Adicionar etapa e salvar vínculo SINAPI':'Adicionar composição ao cronograma'}</button>
+        <button type="button" onClick={appendFromCatalog} disabled={!current||!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> {selectedCatalogService?'Adicionar etapa e salvar vínculo SINAPI':'Adicionar composição ao cronograma'}</button>
       </div>}
       {catalogNotice&&<p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-200">{catalogNotice}</p>}
       <p className="text-[11px] leading-relaxed text-slate-400">O catálogo guarda sua descrição comercial e preço de venda. A composição SINAPI fornece apenas mão de obra analítica, não materiais nem preço final. O vínculo é uma seleção sua, e o prazo continua sendo uma estimativa.</p>
-    </section>}
+    </section>
     {attached && current && <section aria-label="Do orçamento para o cronograma" className={`${tile} space-y-3 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
