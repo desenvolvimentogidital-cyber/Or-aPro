@@ -6,7 +6,8 @@ import { containsOldExampleRecords } from '../utils/legacyFixtures';
 import {validateWorkspaceBackup} from '../utils/backupValidation';
 import { Quote, Client, CatalogItem, MonthlyExpense, CompanySettings, AppNotification, QuoteStatus } from '../types';
 import { emptyCompany } from '../data/defaults';
-import type { WorkSchedule } from '../types/schedule';
+import type { WorkSchedule, SinapiComposition } from '../types/schedule';
+import type { SinapiUF, SinapiRegime } from '../utils/sinapiRegional';
 import type { FinanceEntry } from '../types/finance';
 import { validateEntry } from '../utils/financeMetrics';
 import { workspaceSignature, needsWorkspaceSave } from '../utils/workspaceSync';
@@ -31,7 +32,19 @@ export type AppView =
   | 'configuracoes'
   | 'admin';
 
+interface SinapiImportSession {
+  compositions: SinapiComposition[];
+  reference: string;
+  uf: SinapiUF | '';
+  regime: SinapiRegime | '';
+  info: string;
+}
+const emptySinapiSession=():SinapiImportSession=>({compositions:[],reference:'',uf:'',regime:'',info:''});
+
 interface AppContextType {
+  /** Memória de sessão: planilha analítica não é gravada no banco. Reutilizada ao trocar de módulo. */
+  sinapiSession: SinapiImportSession;
+  setSinapiSession: React.Dispatch<React.SetStateAction<SinapiImportSession>>;
   activeView: AppView;
   setActiveView: (view: AppView) => void;
   ready: boolean;
@@ -128,6 +141,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [financeEntries,setFinanceEntries] = useState<FinanceEntry[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [sinapiSession,setSinapiSession]=useState<SinapiImportSession>(emptySinapiSession);
   const [expenses, setExpenses] = useState<MonthlyExpense[]>([]);
   const [company, setCompany] = useState<CompanySettings>(emptyCompany);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -480,6 +494,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveView,
         ready, syncStatus, syncError, getNextQuoteNumber, exportBackup, importBackup, importLegacyData, retrySync,
         quotes,
+        sinapiSession, setSinapiSession,
         schedules, selectedScheduleId, setSelectedScheduleId, addSchedule, updateSchedule, deleteSchedule,
         financeEntries, addFinanceEntry, deleteFinanceEntry,
         activeQuoteForPreview,

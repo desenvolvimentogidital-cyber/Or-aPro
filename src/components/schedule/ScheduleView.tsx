@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Upload, Plus, Trash2, HardHat, Clock3, Info, AlertTriangle, Search, FileSpreadsheet, CheckCircle2, BarChart3, Download, ChevronDown, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
+import { CalendarDays, Upload, Plus, Trash2, HardHat, Clock3, Info, AlertTriangle, Search, FileSpreadsheet, CheckCircle2, BarChart3, Download, ChevronDown, ExternalLink, ArrowUp, ArrowDown, Wrench } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { importSinapiFile } from '../../utils/sinapiFile';
@@ -13,7 +13,8 @@ import { resolveScheduleSelection } from '../../utils/scheduleSelection';
 import { decimalFromInput, mergeSinapiReports } from '../../utils/sinapi';
 import type { SinapiComposition, WorkSchedule, ScheduleTask } from '../../types/schedule';
 import { newId } from '../../utils/quoteMath';
-import { findQuoteSinapiCandidates, sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
+import { sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
+import { compositionIdentity, findCatalogSinapiCandidates, savedSinapiForQuote, usableSinapiComposition } from '../../utils/catalogSinapi';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -37,13 +38,16 @@ function exportScheduleCSV(schedule:WorkSchedule){
   const a=document.createElement('a');a.href=url;a.download=`orcapro-cronograma-${schedule.id}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 export const ScheduleView:React.FC=()=>{
-  const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,company,ready,syncStatus}=useApp();
+  const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,catalog,updateCatalogItem,sinapiSession,setSinapiSession,company,ready,syncStatus}=useApp();
   const {theme}=useTheme();
-  const [imported,setImported]=useState<SinapiComposition[]>([]);
-  const [importInfo,setImportInfo]=useState('');
-  const [reference,setReference]=useState('');
-  const [regionalUF,setRegionalUF]=useState<SinapiUF | ''>('');
-  const [regionalRegime,setRegionalRegime]=useState<SinapiRegime | ''>('');
+  const imported=sinapiSession.compositions;
+  const [importInfo,setImportInfo]=useState(sinapiSession.info);
+  const reference=sinapiSession.reference;
+  const regionalUF=sinapiSession.uf;
+  const regionalRegime=sinapiSession.regime;
+  const setReference=(value:string)=>setSinapiSession(v=>({...v,reference:value}));
+  const setRegionalUF=(value:SinapiUF|'')=>setSinapiSession(v=>({...v,uf:value}));
+  const setRegionalRegime=(value:SinapiRegime|'')=>setSinapiSession(v=>({...v,regime:value}));
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [search,setSearch]=useState('');
@@ -57,6 +61,13 @@ export const ScheduleView:React.FC=()=>{
   const [measurementInput,setMeasurementInput]=useState<Record<string,string>>({});
   const [measurementDate,setMeasurementDate]=useState<Record<string,string>>({});
   const [measurementNote,setMeasurementNote]=useState<Record<string,string>>({});
+  const [catalogServiceQuery,setCatalogServiceQuery]=useState('');
+  const [catalogSelectedId,setCatalogSelectedId]=useState('');
+  const [catalogSinapiQuery,setCatalogSinapiQuery]=useState('');
+  const [catalogChoice,setCatalogChoice]=useState('');
+  const [catalogQuantity,setCatalogQuantity]=useState('');
+  const [catalogTargetDays,setCatalogTargetDays]=useState('');
+  const [catalogNotice,setCatalogNotice]=useState('');
   const [showImport,setShowImport]=useState(true);
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
@@ -89,6 +100,46 @@ export const ScheduleView:React.FC=()=>{
   const physicalMoney=current?physicalFinancial(current,attached):null;
   const filtered=useMemo(()=>imported.filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,search]);
   const selected=imported.find(c=>`${c.code}|${c.unit}`===selectedComposition);
+  const catalogServices=useMemo(()=>{
+    const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    return catalog.filter(item=>item.type==='servico' &&
+      (!query || (item.name+' '+item.category).normalize('NFD')
+        .replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query))).slice(0,45);
+  },[catalog,catalogServiceQuery]);
+  const selectedCatalogService=catalog.find(item=>item.id===catalogSelectedId && item.type==='servico');
+  const knownCompositions=useMemo(()=>{
+    const items:SinapiComposition[]=[];
+    const used=new Set<string>();
+    const collect=(c:SinapiComposition)=>{
+      const key=compositionIdentity(c);
+      if(!used.has(key)){items.push(c);used.add(key);}
+    };
+    // A importação atual é prioritária; composições antigas são mostradas com fonte explícita.
+    imported.forEach(collect);
+    catalog.forEach(item=>{if(usableSinapiComposition(item.sinapiComposition))collect(item.sinapiComposition);});
+    schedules.forEach(schedule=>schedule.tasks.forEach(task=>{
+      if(usableSinapiComposition(task.composition))collect(task.composition);
+    }));
+    return items;
+  },[imported,catalog,schedules]);
+  const catalogCandidates=useMemo(()=>{
+    if(!selectedCatalogService)return [];
+    const results=findCatalogSinapiCandidates(selectedCatalogService,knownCompositions,catalogSinapiQuery,25);
+    const linked=selectedCatalogService.sinapiComposition;
+    if(usableSinapiComposition(linked) && !catalogSinapiQuery.trim() &&
+       !results.some(c=>compositionIdentity(c)===compositionIdentity(linked)))return [linked,...results].slice(0,25);
+    return results;
+  },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
+  const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
+  const selectedCatalogQuantity=decimalFromInput(catalogQuantity);
+  const catalogSimulation=useMemo(()=>{
+    if(!current||!selectedCatalogComposition||!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0)
+      return {result:null as ReturnType<typeof simulateCrewForQuote>|null,error:''};
+    try{
+      return {result:simulateCrewForQuote(selectedCatalogComposition,selectedCatalogQuantity,
+        current.hoursPerDay,current.efficiency,catalogTargetDays.trim()?Number(catalogTargetDays):undefined),error:''};
+    }catch(err){return {result:null,error:err instanceof Error?err.message:'Quantidade ou equipe inválida.'};}
+  },[current,selectedCatalogComposition,selectedCatalogQuantity,catalogTargetDays]);
   const change=(patch:Partial<WorkSchedule>)=>{if(current)updateSchedule({...current,...patch,updatedAt:new Date().toISOString()});};
   const addHoliday=()=>{
     if(!current)return;
@@ -111,16 +162,16 @@ export const ScheduleView:React.FC=()=>{
   };
   const loadFiles=async(files?:FileList|null)=>{
     if(!files?.length)return;
-    setBusy(true);setError('');setImportInfo('');setImported([]);setSelectedComposition('');setReference('');setRegionalUF('');setRegionalRegime('');
+    setBusy(true);setError('');setImportInfo('');setSinapiSession({compositions:[],reference:'',uf:'',regime:'',info:''});setSelectedComposition('');
     try{
       const reports=[];
       for(const file of Array.from(files))reports.push({file:file.name,report:await importSinapiFile(file)});
       const result=mergeSinapiReports(reports.map(f=>f.report));
-      setImported(result.compositions);
       setSelectedComposition('');
-      setReference(result.reference||'');
       const names=reports.map(r=>`${r.file}: ${r.report.compositions.length} composição(ões) elegíveis`).join(' | ');
-      setImportInfo(`${names}. Total: ${result.compositions.length} serviço(s) com HH identificadas. ${result.issues.join(' ')}`);
+      const info=`${names}. Total: ${result.compositions.length} serviço(s) com HH identificadas. ${result.issues.join(' ')}`;
+      setImportInfo(info);
+      setSinapiSession({compositions:result.compositions,reference:result.reference||'',uf:'',regime:'',info});
     }catch(e){setError(e instanceof Error?e.message:'Falha na leitura da planilha.');}
     finally{setBusy(false);if(fileRef.current)fileRef.current.value='';}
   };
@@ -150,11 +201,13 @@ export const ScheduleView:React.FC=()=>{
     if(current.tasks.length>=180){setError('Limite de 180 etapas atingido. Divida a obra por cronograma.');return;}
     if(current.tasks.some(t=>t.quoteItemId===item.id)){setError('Este item já está vinculado ao cronograma.');return;}
     const key=quoteComposition[item.id]||'';
-    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key);
+    const stored=savedSinapiForQuote(item,catalog);
+    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key)
+      || (stored && `${stored.code}|${stored.unit}`===key?stored:undefined);
     if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
     }
-    if(!regionalUF || !regionalRegime || !validCompetence(reference.trim())){
+    if(!usableSinapiComposition(chosen) && (!regionalUF || !regionalRegime || !validCompetence(reference.trim()))){
       setError('Antes de gerar as etapas informe competência, UF e encargos da planilha SINAPI.');return;
     }
     const input=(quoteTargetDays[item.id]||'').trim();
@@ -162,7 +215,8 @@ export const ScheduleView:React.FC=()=>{
     let composition:SinapiComposition;
     let simulated:ReturnType<typeof simulateCrewForQuote>;
     try{
-      composition=withSinapiProvenance(chosen,{reference:reference.trim(),uf:regionalUF,regime:regionalRegime});
+      composition=usableSinapiComposition(chosen)?chosen:
+        withSinapiProvenance(chosen,{reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime});
       simulated=simulateCrewForQuote(composition,item.quantity,current.hoursPerDay,current.efficiency,days);
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível dimensionar a equipe.');return;}
     const newTask:ScheduleTask={
@@ -170,8 +224,49 @@ export const ScheduleView:React.FC=()=>{
       dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]
     };
     change({tasks:[...current.tasks,newTask]});
+    const origin=item.catalogItemId?catalog.find(c=>c.id===item.catalogItemId):undefined;
+    if(origin?.type==='servico' && (!origin.sinapiComposition || compositionIdentity(origin.sinapiComposition)!==compositionIdentity(composition)))
+      updateCatalogItem({...origin,sinapiComposition:composition});
     setActiveQuoteItem('');setError('');
     setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
+  };
+  const appendFromCatalog=()=>{
+    if(!current||!selectedCatalogService||!selectedCatalogComposition){
+      setError('Selecione um serviço cadastrado e uma composição SINAPI para continuar.');return;
+    }
+    if(!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0){
+      setError('Informe uma quantidade válida na unidade da composição SINAPI.');return;
+    }
+    if(current.tasks.length>=180){setError('Limite de 180 serviços por cronograma.');return;}
+    let composition:SinapiComposition;
+    try {
+      if(usableSinapiComposition(selectedCatalogComposition)){
+        composition=selectedCatalogComposition;
+      }else {
+        if(!regionalUF||!regionalRegime||!validCompetence(reference.trim()))
+          throw Error('Informe a competência, UF e encargos da planilha antes de usar esta composição.');
+        composition=withSinapiProvenance(selectedCatalogComposition,{
+          reference:reference.trim(),uf:regionalUF,regime:regionalRegime
+        });
+      }
+      // A equipe de 1 pessoa por função é uma SIMULAÇÃO, revisável na etapa.
+      const simulated=simulateCrewForQuote(composition,selectedCatalogQuantity,
+        current.hoursPerDay,current.efficiency,catalogTargetDays.trim()?Number(catalogTargetDays):undefined);
+      const task:ScheduleTask={
+        id:newId('etapa'),composition,quantity:selectedCatalogQuantity,crew:simulated.crew,
+        notes:`Serviço do catálogo: ${selectedCatalogService.name} (ref. ${selectedCatalogService.id}).`,
+        dependencies:current.scheduleMode==='dependencias' && current.tasks.length
+          ?[current.tasks[current.tasks.length-1].id]:[]
+      };
+      change({tasks:[...current.tasks,task]});
+      if(!selectedCatalogService.sinapiComposition ||
+         compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition))
+        updateCatalogItem({...selectedCatalogService,sinapiComposition:composition});
+      setError('');
+      setCatalogNotice(`Etapa criada: ${selectedCatalogService.name} → SINAPI ${composition.code}. A composição foi salva no catálogo para reutilização. Revise a equipe simulada e a quantidade.`);
+      setCatalogQuantity('');
+      setCatalogChoice('');
+    }catch(err){setError(err instanceof Error?err.message:'Não foi possível associar o serviço SINAPI.');}
   };
   const changeTask=(task:ScheduleTask)=>change({tasks:current!.tasks.map(t=>t.id===task.id?task:t)});
   const recordMeasurement=(task:ScheduleTask)=>{
@@ -220,7 +315,7 @@ export const ScheduleView:React.FC=()=>{
       <a href="https://www.caixa.gov.br/poder-publico/modernizacao-gestao/sinapi/Paginas/default.aspx" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-orange-300 hover:underline">Abrir fonte oficial SINAPI (CAIXA) <ExternalLink size={12}/></a>
       <p className="text-[11px] text-amber-300/90">Importante: o percentual de mão de obra não representa horas-homem. Prazo por serviço depende das composições analíticas, quantitativo, equipe e jornada reais.</p>
       {importInfo&&<p className="rounded-xl bg-white/5 p-3 text-[11px] leading-relaxed text-slate-300">{importInfo}</p>}
-      {imported.length>0&&<><p className="text-[11px] text-slate-400">As composições importadas ficam disponíveis nesta sessão. Ao adicionar uma etapa, o coeficiente e a fonte ficam salvos no cronograma no seu Supabase. Reimporte a planilha para escolher novos serviços depois de fechar o aplicativo.</p>
+      {imported.length>0&&<><p className="text-[11px] text-slate-400">As composições importadas continuam disponíveis enquanto você navega entre Serviços, Orçamentos e Cronograma nesta sessão. Ao vincular um serviço do catálogo à composição, ela fica salva nesse serviço para o próximo acesso. Para novos serviços, após fechar a página, importe a planilha novamente.</p>
       <label className="relative block"><Search size={15} className="absolute left-3 top-3.5 text-slate-500"/><input className={`${control} pl-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por código ou descrição"/></label>
       <div className="max-h-64 space-y-1 overflow-y-auto">{filtered.map(c=><button type="button" key={`${c.code}|${c.unit}`} onClick={()=>setSelectedComposition(`${c.code}|${c.unit}`)} className={`w-full rounded-xl border p-3 text-left ${selectedComposition===`${c.code}|${c.unit}`?'border-orange-500/60 bg-orange-500/10':'border-white/5 bg-[#0d1119]'}`}><div className="flex items-start justify-between gap-2"><strong className="text-xs text-slate-200">{c.code} · {c.unit}</strong><span className="text-[11px] text-orange-300">{fmt(c.labor.reduce((s,l)=>s+l.hoursPerUnit,0),4)} HH/{c.unit}</span></div><p className="mt-1 text-[11px] leading-snug text-slate-400">{c.description}</p></button>)}</div>
       {selected&&<div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-3"><div><strong className="text-xs">{selected.description}</strong><p className="mt-1 text-[10px] text-slate-400">{selected.labor.map(l=>`${l.role}: ${fmt(l.hoursPerUnit,5)} h/${selected.unit}`).join(' · ')}</p></div>
@@ -230,20 +325,89 @@ export const ScheduleView:React.FC=()=>{
       </div>}</>}
       </>}
     </section>
+    {current&&<section aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
+      <div>
+        <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Wrench size={18} className="text-orange-400"/> Meus serviços → SINAPI</h2>
+        <p className="mt-1 text-xs leading-relaxed text-slate-300">Selecione um serviço que você já cadastrou (ex.: instalar tomada), encontre a composição oficial do SINAPI e adicione ao cronograma. A referência selecionada fica salva junto ao serviço para reutilizar depois, sem refazer a importação.</p>
+      </div>
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <div className="min-w-0 space-y-2">
+          <label className="block text-xs font-semibold text-slate-200">1. Serviço salvo no catálogo
+            <input className={`${control} mt-1`} type="search" aria-label="Buscar serviço cadastrado" value={catalogServiceQuery} onChange={e=>setCatalogServiceQuery(e.target.value)} placeholder="Ex.: instalação de tomada, pintura..."/>
+          </label>
+          <div className="max-h-64 space-y-1.5 overflow-y-auto" role="group" aria-label="Selecionar serviço do catálogo">
+            {catalogServices.map(item=><button key={item.id} type="button" aria-pressed={catalogSelectedId===item.id}
+              onClick={()=>{setCatalogSelectedId(item.id);setCatalogSinapiQuery('');setCatalogChoice('');setCatalogQuantity('');setCatalogTargetDays('');setCatalogNotice('');setError('');}}
+              className={`w-full rounded-xl border p-3 text-left transition ${catalogSelectedId===item.id?'border-orange-500/60 bg-orange-500/10':'border-white/10 bg-[#0b0e15] hover:border-orange-500/30'}`}>
+              <strong className="block text-xs text-slate-100">{item.name}</strong>
+              <span className="mt-1 block text-[11px] text-slate-400">Unidade cadastrada: {item.unit} {usableSinapiComposition(item.sinapiComposition)?` · ✓ SINAPI ${item.sinapiComposition.code} salvo`:''}</span>
+            </button>)}
+            {!catalogServices.length&&<p className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-slate-400">Nenhum serviço cadastrado com esse nome. Cadastre primeiro em <strong>Serviços</strong> no menu do OrçaPro.</p>}
+          </div>
+        </div>
+        <div className="min-w-0 space-y-3">
+          <label className="block text-xs font-semibold text-slate-200">2. Composição SINAPI correspondente
+            <input className={`${control} mt-1`} type="search" aria-label="Buscar composição SINAPI para o serviço" value={catalogSinapiQuery}
+              onChange={e=>{setCatalogSinapiQuery(e.target.value);setCatalogChoice('');}}
+              disabled={!selectedCatalogService} placeholder="Ex.: tomada, ponto elétrico ou código SINAPI"/>
+          </label>
+          {selectedCatalogService&&<div className="space-y-2">
+            {knownCompositions.length===0?<p className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-100">Ainda não há composições analíticas carregadas ou vinculadas. Importe a planilha <strong>SINAPI Referência — Analítico</strong> no quadro acima para ver os serviços com horas-homem oficiais. O nome cadastrado não gera HH sozinho.</p>
+            :<div className="max-h-64 space-y-1.5 overflow-y-auto" role="group" aria-label="Escolher composição SINAPI">
+              {catalogCandidates.map(c=><button type="button" key={compositionIdentity(c)}
+                aria-pressed={catalogChoice===compositionIdentity(c)}
+                onClick={()=>{setCatalogChoice(compositionIdentity(c));setCatalogNotice('');setError('');}}
+                className={`w-full rounded-xl border p-2.5 text-left ${catalogChoice===compositionIdentity(c)?'border-orange-500/70 bg-orange-500/10':'border-white/10 bg-[#0b0e15] hover:border-orange-500/30'}`}>
+                <span className="flex flex-wrap items-center justify-between gap-2 text-[11px]"><strong className="text-orange-200">SINAPI {c.code} · {c.unit}</strong><span className="text-emerald-300">{fmt(c.labor.reduce((n,l)=>n+l.hoursPerUnit,0),4)} HH/{c.unit}</span></span>
+                <span className="mt-1 block text-xs text-slate-100">{c.description}</span>
+                <small className="mt-1 block text-[10px] text-slate-400">{c.sourceFile} · {sinapiOriginLabel(c)}{usableSinapiComposition(c)?' · referência pronta para reutilizar':''}</small>
+              </button>)}
+              {!catalogCandidates.length&&<p className="rounded-xl border border-dashed border-white/15 p-3 text-xs text-slate-400">Nenhuma composição compatível encontrada pelo nome. Digite outro termo ou o código SINAPI. Só aparecem composições que possuem coeficientes de mão de obra verificáveis.</p>}
+            </div>}
+          </div>}
+          {!selectedCatalogService&&<p className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-slate-400">Escolha primeiro o serviço na lista à esquerda (ou acima, no celular).</p>}
+        </div>
+      </div>
+      {selectedCatalogService&&selectedCatalogComposition&&<div className="space-y-3 rounded-xl border border-orange-500/25 bg-orange-500/5 p-3">
+        <div>
+          <h3 className="text-xs font-bold text-orange-200">3. Confirmar serviço e quantidade</h3>
+          <p className="mt-1 text-xs text-slate-200">{selectedCatalogService.name} → <strong>{selectedCatalogComposition.code}</strong> · {selectedCatalogComposition.description}</p>
+          {!sameServiceUnit(selectedCatalogService.unit,selectedCatalogComposition.unit)&&<p className="mt-2 rounded-lg border border-amber-500/25 p-2 text-[11px] leading-relaxed text-amber-200">A unidade do catálogo é “{selectedCatalogService.unit}”, mas a composição usa “{selectedCatalogComposition.unit}”. Informe abaixo a quantidade na <strong>unidade SINAPI</strong>. Esta etapa não receberá vínculo financeiro automático com o orçamento, para não confundir valores.</p>}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs text-slate-200">Quantidade real ({selectedCatalogComposition.unit})
+            <input className={`${control} mt-1`} type="text" inputMode="decimal" aria-label="Quantidade na unidade SINAPI" value={catalogQuantity} onChange={e=>setCatalogQuantity(e.target.value)} placeholder="Ex.: 12"/>
+          </label>
+          <label className="block text-xs text-slate-200">Prazo desejado em dias úteis (opcional)
+            <input className={`${control} mt-1`} type="number" min="1" max="10000" step="1" aria-label="Prazo para serviço do catálogo" value={catalogTargetDays} onChange={e=>setCatalogTargetDays(e.target.value)} placeholder="Ex.: 3"/>
+          </label>
+        </div>
+        {!usableSinapiComposition(selectedCatalogComposition)&&<p className="text-[11px] text-amber-200">Para confirmar esta composição recém-importada, preencha competência, UF e encargos na seção de importação acima. O código e as HH vêm da planilha, não do nome do serviço.</p>}
+        {catalogSimulation.result&&<p className="rounded-lg bg-[#101e2d] p-2.5 text-xs leading-relaxed text-slate-200">Mão de obra SINAPI: <strong>{fmt(catalogSimulation.result.totalHH,2)} HH</strong> · Prazo simulado: <strong>{catalogSimulation.result.projectedDays} dia(s) útil(eis)</strong> · Equipe inicial: {catalogSimulation.result.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}. Confirme a disponibilidade antes de executar.</p>}
+        {catalogSimulation.error&&<p role="alert" className="text-xs text-rose-300">{catalogSimulation.error}</p>}
+        <button type="button" onClick={appendFromCatalog} disabled={!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> Adicionar etapa ao cronograma e salvar vínculo SINAPI</button>
+      </div>}
+      {catalogNotice&&<p role="status" className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3 text-xs leading-relaxed text-emerald-200">{catalogNotice}</p>}
+      <p className="text-[11px] leading-relaxed text-slate-400">O catálogo guarda sua descrição comercial e preço de venda. A composição SINAPI fornece apenas mão de obra analítica, não materiais nem preço final. O vínculo é uma seleção sua, e o prazo continua sendo uma estimativa.</p>
+    </section>}
     {attached && current && <section aria-label="Do orçamento para o cronograma" className={`${tile} space-y-3 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
-      {!imported.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima. Sem coeficientes reais de mão de obra não é possível sugerir equipe nem duração.</p>}
+      {!imported.length && !attached.items.some(i=>savedSinapiForQuote(i,catalog)) && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima, ou vincule uma composição ao serviço no quadro <strong>Meus serviços → SINAPI</strong>. Sem coeficientes analíticos reais não é possível calcular equipe nem duração.</p>}
       {attached.items.length===0 && <p className="text-xs text-slate-400">O orçamento vinculado ainda não possui itens de serviço.</p>}
       {attached.items.map(item=>{
         const already=current.tasks.find(t=>t.quoteItemId===item.id);
         const expanded=activeQuoteItem===item.id;
         const query=quoteSearch[item.id]||'';
-        const matches=expanded?findQuoteSinapiCandidates(item,imported,query,20):[];
+        const remembered=savedSinapiForQuote(item,catalog);
+        const options=remembered && !imported.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
+          ? [...imported,remembered]:imported;
+        const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
+          .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
         const selectedKey=quoteComposition[item.id]||'';
-        const chosen=imported.find(c=>`${c.code}|${c.unit}`===selectedKey);
+        const chosen=options.find(c=>`${c.code}|${c.unit}`===selectedKey);
         if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
         const targetInput=(quoteTargetDays[item.id]||'').trim();
         const targetDays=targetInput?Number(targetInput):undefined;
@@ -266,7 +430,7 @@ export const ScheduleView:React.FC=()=>{
                 {matches.map(c=><option key={`${c.code}|${c.unit}`} value={`${c.code}|${c.unit}`}>{c.code} · {c.description.slice(0,110)}</option>)}
               </select>
             </label>
-            {!matches.length && imported.length>0 && <p className="text-[11px] text-amber-200">Nenhuma correspondência encontrada. Pesquise pelo código ou por termos da descrição oficial; não será usada uma composição inventada.</p>}
+            {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição com a mesma unidade de “{item.unit}”. Pesquise por código, confira a unidade do orçamento ou selecione o serviço em <strong>Meus serviços → SINAPI</strong> para criar uma etapa independente. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>

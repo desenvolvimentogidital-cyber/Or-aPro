@@ -9,6 +9,7 @@ import { preparePhoto } from '../../utils/imageUpload';
 import {parseSinapiUnitCosts, type SinapiUnitCost} from '../../utils/sinapiCosts';
 import {importSinapiOfficialCosts} from '../../utils/sinapiFile';
 import {sinapiUFs,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
+import { usableSinapiComposition } from '../../utils/catalogSinapi';
 
 interface CatalogViewProps {
   initialType?: ItemType;
@@ -289,6 +290,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                       <span>•</span>
                       <span className="text-slate-500">{item.category}</span>
                     </div>
+                    {item.type==='servico' && usableSinapiComposition(item.sinapiComposition) &&
+                      <span className="mt-1 inline-flex rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">✓ SINAPI {item.sinapiComposition.code} · {item.sinapiComposition.reference}</span>}
                   </div>
                 </div>
 
@@ -420,11 +423,12 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                     type="text"
                     value={unit}
                     onChange={e => setUnit(e.target.value)}
-                    placeholder="un, m, hora, diária"
+                    placeholder="un, m², m³, hora ou serviço"
                     className="w-full bg-[#1b202c] text-sm text-white px-3.5 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-white/30"
                   />
                 </div>
               </div>
+              {type==='servico' && <p className="text-[11px] leading-relaxed text-slate-400">Para relacionar o serviço ao SINAPI no cronograma, informe a unidade real (ex.: un, m², m³). Se manter “serviço”, o cronograma pedirá a quantidade na unidade oficial antes de criar a etapa, sem vincular valores automaticamente.</p>}
 
               {type === 'mao_de_obra' && (
                 <div>
