@@ -24,6 +24,8 @@ import {
 import { Client, CatalogItem, QuoteItem, Quote, QuoteVisibilitySettings, ItemType } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { quoteTotals, newId, dateKey } from '../../utils/quoteMath';
+import { ReferencePreferences } from '../references/ReferencePreferences';
+import {defaultConstructionReferences,validReferenceSettings,type ConstructionReferenceSettings} from '../../utils/constructionReferences';
 
 export const QuoteBuilderView: React.FC = () => {
   const { clients, catalog, addQuote, updateQuote, editingQuote, setEditingQuote, draftClientId, setDraftClientId, getNextQuoteNumber, setActiveView, setActiveQuoteForPreview } = useApp();
@@ -53,6 +55,8 @@ export const QuoteBuilderView: React.FC = () => {
   const [validUntil, setValidUntil] = useState(editingQuote?.validUntil ?? dateKey(new Date(Date.now() + 15 * 86400000)));
   const [notes, setNotes] = useState(editingQuote?.notes ?? '');
   const [modelTemplate, setModelTemplate] = useState<'padrao' | 'moderno' | 'profissional'>(editingQuote?.modelTemplate ?? 'padrao');
+  const [referenceSettings,setReferenceSettings]=useState<ConstructionReferenceSettings>(()=>editingQuote?.referenceSettings??defaultConstructionReferences());
+  const invalidReference=!validReferenceSettings(referenceSettings);
 
   // Client document visibility configuration (Section 7 of user spec!)
   const [visibility, setVisibility] = useState<QuoteVisibilitySettings>(editingQuote?.visibility ?? {
@@ -138,7 +142,7 @@ export const QuoteBuilderView: React.FC = () => {
   };
 
   const handleProceedToPreview = () => {
-    if (calculationError || !selectedClient || items.length === 0) return;
+    if (calculationError || invalidReference || !selectedClient || items.length === 0) return;
     const newQuote: Quote = {
       id: editingQuote?.id ?? newId('orc'),
       number: editingQuote?.number ?? getNextQuoteNumber(),
@@ -164,6 +168,7 @@ export const QuoteBuilderView: React.FC = () => {
       notes,
       paymentTerms,
       modelTemplate,
+      referenceSettings,
       history: [...(editingQuote?.history || []), { date: new Date().toISOString(), action: editingQuote ? 'Orçamento editado' : 'Orçamento criado', user: 'Responsável pela conta' }]
     };
 
@@ -326,6 +331,9 @@ export const QuoteBuilderView: React.FC = () => {
           )}
         </div>
       </div>
+
+      <ReferencePreferences value={referenceSettings} onChange={setReferenceSettings}/>
+      {invalidReference&&<p role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Revise o nome da referência personalizada e a competência no formato MM/AAAA antes de salvar a proposta.</p>}
 
       {/* 3. Despesas extras & Descontos */}
       <div className="rounded-2xl bg-[#141822] border border-white/5 p-4 space-y-3">
@@ -515,7 +523,7 @@ export const QuoteBuilderView: React.FC = () => {
       {/* Action Button: Continuar (Referência visual #4 button with degradê) */}
       <button
         onClick={handleProceedToPreview}
-        disabled={items.length === 0 || !selectedClient || !!calculationError}
+        disabled={items.length === 0 || !selectedClient || !!calculationError || invalidReference}
         className="w-full py-4 px-4 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] disabled:opacity-50"
         style={{
           background: theme.primaryGradient || 'linear-gradient(135deg, #ffa114 0%, #ff6b00 50%, #ff3b00 100%)',
