@@ -119,7 +119,10 @@ try{
  await global.getByLabel('Buscar composição SINAPI para o serviço').fill('100860');
  await global.getByRole('group',{name:'Escolher composição SINAPI'})
   .getByRole('button',{name:/SINAPI 100860/}).waitFor({timeout:13000});
- assert.ok(queries.some(q=>q.includes('chuveiro'))&&queries.some(q=>q.includes('monof'))&&queries.some(q=>q.includes('100860')));
+ // A opção pode aparecer no cache React antes de terminar o debounce da chamada REST.
+ await page.waitForTimeout(700);
+ assert.ok(queries.some(q=>q.includes('chuveiro'))&&queries.some(q=>q.includes('monof'))&&queries.some(q=>q.includes('100860')),
+   'Consultas independentes devem chegar ao banco: '+JSON.stringify(queries));
  // Recuperar tarefa criada antes como "sem HH": mantém id, quantidade e progresso.
  store.payload.schedules[0].tasks.push({
   id:'etapa-pendente-qa',quantity:1,crew:{},quoteItemId:undefined,
