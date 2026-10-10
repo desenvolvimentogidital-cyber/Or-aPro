@@ -21,6 +21,7 @@ import {searchSinapiOnline,onlineSinapiPendingComposition,type SinapiOnlineResul
 import { ReferencePreferences } from '../references/ReferencePreferences';
 import {costReferenceName,validReferenceSettings} from '../../utils/constructionReferences';
 import { EditableNumericInput } from '../common/EditableNumericInput';
+import {categoryLabel,categoryOfSinapi,categorySearchHint,matchesSinapiCategory,sinapiCategoryOptions,type SinapiCategoryFilter} from '../../utils/sinapiCategories';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -63,6 +64,8 @@ export const ScheduleView:React.FC=()=>{
   const [selectedQuoteItem,setSelectedQuoteItem]=useState('');
   const [activeQuoteItem,setActiveQuoteItem]=useState('');
   const [quoteSearch,setQuoteSearch]=useState<Record<string,string>>({});
+  const [quoteCategory,setQuoteCategory]=useState<Record<string,SinapiCategoryFilter>>({});
+  const [catalogCategory,setCatalogCategory]=useState<SinapiCategoryFilter>('todas');
   const [quoteComposition,setQuoteComposition]=useState<Record<string,string>>({});
   const [quoteTargetDays,setQuoteTargetDays]=useState<Record<string,string>>({});
   const [measurementInput,setMeasurementInput]=useState<Record<string,string>>({});
@@ -125,10 +128,15 @@ export const ScheduleView:React.FC=()=>{
   const attached=quotes.find(q=>q.id===current?.quoteId);
   const physical=current?physicalProgress(current):null;
   const activeQuoteTerm=activeQuoteItem
-    ? quoteSearch[activeQuoteItem]?.trim()||attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
+    ? quoteSearch[activeQuoteItem]?.trim() ||
+      (quoteCategory[activeQuoteItem]&&quoteCategory[activeQuoteItem]!=='todas'
+        ? categorySearchHint(quoteCategory[activeQuoteItem]):'') ||
+      attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
     : '';
   // Consultas independentes: abrir Configurar no orçamento não pode bloquear a busca livre do catálogo.
-  const savedLibraryTerm=(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim()).slice(0,100);
+  const savedLibraryTerm=(catalogSinapiQuery.trim() ||
+    (catalogCategory!=='todas'?categorySearchHint(catalogCategory):'') ||
+    catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim() || search.trim()).slice(0,100);
   useEffect(()=>{
     if(!session)return;
     let cancelled=false;
@@ -164,7 +172,9 @@ export const ScheduleView:React.FC=()=>{
     return()=>{window.clearTimeout(id);controller.abort();};
   },[session?.user.id,session?.access_token,activeQuoteItem,activeQuoteTerm,savedLibraryCount]);
   const physicalMoney=current?physicalFinancial(current,attached):null;
-  const filtered=useMemo(()=>[...imported,...savedCompositions,...quoteSavedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,quoteSavedCompositions,search]);
+  const filtered=useMemo(()=>[...imported,...savedCompositions,...quoteSavedCompositions]
+    .filter(c=>matchesSinapiCategory(c,catalogCategory)&&`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase()))
+    .slice(0,80),[imported,savedCompositions,quoteSavedCompositions,search,catalogCategory]);
   const selected=[...imported,...savedCompositions,...quoteSavedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
   const catalogServices=useMemo(()=>{
     const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
@@ -218,15 +228,17 @@ export const ScheduleView:React.FC=()=>{
     const results=findCatalogSinapiCandidates(target,knownCompositions,catalogSinapiQuery,50);
     // A consulta SQL reconhece termos comerciais como "padrão monofásico" e
     // devolve "ENTRADA DE ENERGIA ELÉTRICA MONOFÁSICA". Não filtre novamente pelo nome.
-    const ranked=[...savedCompositions.filter(isAnalyticalSinapi),...results].filter((c,i,all)=>
-      all.findIndex(other=>compositionIdentity(other)===compositionIdentity(c))===i).slice(0,50);
+    const ranked=[...savedCompositions.filter(isAnalyticalSinapi),...results]
+      .filter(c=>matchesSinapiCategory(c,catalogCategory))
+      .filter((c,i,all)=>all.findIndex(other=>compositionIdentity(other)===compositionIdentity(c))===i)
+      .slice(0,50);
     const linked=selectedCatalogService?.sinapiComposition;
-    if(usableSinapiComposition(linked) && !catalogSinapiQuery.trim() &&
+    if(usableSinapiComposition(linked) && matchesSinapiCategory(linked,catalogCategory) && !catalogSinapiQuery.trim() &&
        !ranked.some(c=>compositionIdentity(c)===compositionIdentity(linked)))
       return [linked,...ranked].slice(0,50);
     return ranked;
-  },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
-  const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
+  },[selectedCatalogService,knownCompositions,catalogSinapiQuery,catalogCategory,savedCompositions]);
+  const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice && matchesSinapiCategory(c,catalogCategory));
   const filteredOnlineResults=onlineResults.filter(row=>
     !knownCompositions.some(c=>c.code===row.code && sameServiceUnit(c.unit,row.unit)));
   const selectedCatalogQuantity=decimalFromInput(catalogQuantity);
@@ -331,7 +343,7 @@ export const ScheduleView:React.FC=()=>{
     const stored=savedSinapiForQuote(item,catalog);
     const chosen=knownCompositions.find(c=>compositionIdentity(c)===key)
       || (stored && compositionIdentity(stored)===key?stored:undefined);
-    if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
+    if(!chosen || !sameServiceUnit(chosen.unit,item.unit) || !matchesSinapiCategory(chosen,quoteCategory[item.id]||'todas')){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
     }
     const sourceMonth=chosen.reference||reference.trim();
@@ -359,7 +371,7 @@ export const ScheduleView:React.FC=()=>{
     setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
   };
   const appendFromCatalog=()=>{
-    if(!current||!selectedCatalogComposition){
+    if(!current||!selectedCatalogComposition || !matchesSinapiCategory(selectedCatalogComposition,catalogCategory)){
       setError('Selecione uma composição SINAPI para adicionar ao cronograma.');return;
     }
     if(!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0){
@@ -391,8 +403,12 @@ export const ScheduleView:React.FC=()=>{
           ?[current.tasks[current.tasks.length-1].id]:[]
       };
       change({tasks:[...current.tasks,task]});
+      // Um serviço comercial pode envolver hidráulica e elétrica distintas.
+      // Não sobrescrever associação anterior de outra especialidade.
       if(selectedCatalogService && (!selectedCatalogService.sinapiComposition ||
-         compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition)))
+         categoryOfSinapi(selectedCatalogService.sinapiComposition)===categoryOfSinapi(composition)) &&
+         (!selectedCatalogService.sinapiComposition ||
+          compositionIdentity(selectedCatalogService.sinapiComposition)!==compositionIdentity(composition)))
         updateCatalogItem({...selectedCatalogService,sinapiComposition:composition});
       setError('');
       setCatalogNotice(selectedCatalogService
