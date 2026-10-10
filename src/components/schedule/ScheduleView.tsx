@@ -405,11 +405,11 @@ export const ScheduleView:React.FC=()=>{
     try{
       const composition=usableSinapiComposition(importedComposition)?importedComposition:
         withSinapiProvenance(importedComposition,{
-          reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
+          reference:importedComposition.reference||reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
         });
       const result=simulateCrewForQuote(composition,task.quantity,current.hoursPerDay,current.efficiency);
       changeTask({...task,composition,crew:result.crew,
-        notes:(task.notes||'')+' Coeficientes analíticos confirmados na planilha importada; revisar equipe.'});
+        notes:(task.notes||'')+' Coeficientes analíticos confirmados a partir da referência SINAPI selecionada; revisar equipe.'});
       setError('');
       setImportInfo(`Etapa SINAPI ${composition.code} recebeu coeficientes analíticos reais. Revise a equipe inicial e o prazo simulado.`);
     }catch(e){setError(e instanceof Error?e.message:'Não foi possível completar o dimensionamento da etapa.');}
@@ -729,13 +729,30 @@ export const ScheduleView:React.FC=()=>{
     {current&&current.tasks.some(task=>!task.composition.labor.length)&&
       <section role="region" aria-label="Etapas SINAPI pendentes de horas-homem" className={`${tile} space-y-3 border-amber-500/25 p-4`}>
         <h2 className="text-sm font-bold text-amber-200">Etapas encontradas online — falta dimensionar HH</h2>
-        <p className="text-xs leading-relaxed text-slate-300">Códigos e descrições podem ser registrados antes do relatório analítico, mas as datas ficam pendentes. Ao importar uma composição com <strong>o mesmo código e unidade</strong>, aplique seus coeficientes para calcular equipe e duração.</p>
+        <p className="text-xs leading-relaxed text-slate-300">Os códigos já criados como etapas pendentes podem receber HH da biblioteca SINAPI salva no Supabase. Não precisa recriar o orçamento. Busque o mesmo código e unidade, confirme UF e encargos e aplique os coeficientes reais.</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-[11px] text-slate-300">UF para completar as etapas
+            <select aria-label="UF para etapas pendentes" className={`${control} mt-1`} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF|'')}>
+              <option value="">Escolher UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] text-slate-300">Encargos para completar as etapas
+            <select aria-label="Encargos para etapas pendentes" className={`${control} mt-1`} value={regionalRegime} onChange={e=>setRegionalRegime(e.target.value as SinapiRegime|'')}>
+              <option value="">Escolher regime</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
+            </select>
+          </label>
+        </div>
         {current.tasks.filter(task=>!task.composition.labor.length).map(task=>{
-          const source=imported.find(c=>c.code===task.composition.code&&sameServiceUnit(c.unit,task.composition.unit)&&c.labor.length>0);
+          const source=knownCompositions.find(c=>c.code===task.composition.code&&sameServiceUnit(c.unit,task.composition.unit)&&isAnalyticalSinapi(c));
           return <div key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 p-3">
             <span className="min-w-0 text-xs text-slate-200"><strong>SINAPI {task.composition.code}</strong> · {task.composition.description}</span>
             {source?<button type="button" className="min-h-10 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white" onClick={()=>completePendingSinapiTask(task,source)}>Aplicar coeficientes analíticos</button>
-              :<span className="text-[11px] text-amber-200">Aguardando fonte analítica da mesma composição</span>}
+              :<button type="button" onClick={()=>{
+                setCatalogSinapiQuery(task.composition.code);
+                document.getElementById('orcapro-sinapi-lookup')?.scrollIntoView({behavior:'smooth',block:'start'});
+              }} className="min-h-10 rounded-lg border border-orange-500/40 px-3 py-2 text-xs font-bold text-orange-200">
+                Buscar HH do código {task.composition.code} no Supabase
+              </button>}
           </div>;
         })}
       </section>}
