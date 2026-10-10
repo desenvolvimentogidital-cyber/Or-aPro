@@ -39,6 +39,8 @@ jobs:
         run: npm run test:logic
       - name: PDFs reais Chromium (72 itens e 90 etapas)
         run: node test/e2e/pdf-integration.mjs
+      - name: WhatsApp envia arquivo PDF no Android e permite download alternativo
+        run: node test/e2e/whatsapp-pdf.mjs
       - name: Navegacao desktop e mobile
         run: node test/e2e/desktop-navigation.mjs
       - name: Selecao automatica de layout mobile / web e cronograma responsivo
