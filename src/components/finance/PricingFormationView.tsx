@@ -18,9 +18,10 @@ import { MonthlyExpense } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { pricingEstimate, newId } from '../../utils/quoteMath';
 import { calculateBdi, type BdiRates } from '../../utils/bdi';
+import { pricingWorkload } from '../../utils/pricingWorkload';
 
 export const PricingFormationView: React.FC = () => {
-  const { expenses, addExpense, deleteExpense } = useApp();
+  const { expenses, addExpense, deleteExpense, company, updateCompany, ready, syncStatus } = useApp();
   const { theme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<'custos-mensais' | 'calculadora-bdi' | 'bdi-analitico'>('custos-mensais');
@@ -31,8 +32,9 @@ export const PricingFormationView: React.FC = () => {
   const [newExpCategory, setNewExpCategory] = useState('Fixo');
 
   // Pricing & BDI Calculator States
-  const [workHoursPerMonth, setWorkHoursPerMonth] = useState<number>(0);
-  const [workDaysPerMonth, setWorkDaysPerMonth] = useState<number>(0);
+  const workSchedule = pricingWorkload(company.pricingWorkDaysPerMonth, company.pricingHoursPerDay);
+  const workDaysPerMonth = workSchedule.days;
+  const workHoursPerMonth = workSchedule.hoursPerMonth;
   const [desiredProfitMargin, setDesiredProfitMargin] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(0);
   const [jobMaterialCost, setJobMaterialCost] = useState<number>(0);
@@ -49,7 +51,7 @@ export const PricingFormationView: React.FC = () => {
   const totalMonthlyExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
   let costPerDay = 0, costPerHour = 0, markupMultiplier = 0, jobDirectCost = 0, recommendedQuotePrice = 0, estimatedProfit = 0;
   let calculationError = '';
-  try {
+  if (workSchedule.valid) try {
     const result = pricingEstimate({ monthlyExpenses: totalMonthlyExpenses, workDays: workDaysPerMonth, workHours: workHoursPerMonth,
       margin: desiredProfitMargin, tax: taxRate, material: jobMaterialCost, jobHours: jobHours, travel: jobTravel });
     ({ costPerDay, costPerHour, markup: markupMultiplier, directCost: jobDirectCost, price: recommendedQuotePrice, profit: estimatedProfit } = result);
@@ -80,7 +82,59 @@ export const PricingFormationView: React.FC = () => {
         </div>
       </div>
 
-      {calculationError && <div role="alert" className="p-3 rounded-xl bg-rose-950/70 text-rose-300 text-xs">{calculationError}. Corrija os valores para calcular o preço.</div>}
+      {/* A jornada precisa ser editável nesta tela; antes era 0 constante e sem nenhum input. */}
+      <section aria-label="Configurar jornada de trabalho mensal" className="space-y-3 rounded-2xl border border-orange-500/25 bg-[#141822] p-4">
+        <div className="flex items-start gap-2.5">
+          <Clock aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-orange-400"/>
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-white">Dias e horas de trabalho</h2>
+            <p className="mt-1 text-xs leading-relaxed text-slate-300">
+              Informe sua jornada habitual. Ela é usada para dividir as despesas mensais pelo total de horas trabalhadas e calcular o custo por dia e por hora.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-xs font-semibold text-slate-200" htmlFor="pricing-work-days">
+            Dias trabalhados por mês
+            <input id="pricing-work-days" aria-label="Dias trabalhados por mês" type="number" inputMode="numeric"
+              min="1" max="31" step="1" placeholder="Ex.: 22" disabled={!ready}
+              value={company.pricingWorkDaysPerMonth ?? ''}
+              onChange={e=>{
+                const v=e.target.value;
+                const days=v===''?undefined:Number(v);
+                updateCompany({pricingWorkDaysPerMonth:days!==undefined&&Number.isFinite(days)?days:undefined});
+              }}
+              className="mt-1.5 min-h-12 w-full rounded-xl border border-white/15 bg-[#0b0e15] px-3 py-3 text-base text-white outline-none focus:border-orange-500"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-slate-200" htmlFor="pricing-hours-day">
+            Horas trabalhadas por dia
+            <input id="pricing-hours-day" aria-label="Horas trabalhadas por dia" type="number" inputMode="decimal"
+              min="0.5" max="24" step="0.5" placeholder="Ex.: 8" disabled={!ready}
+              value={company.pricingHoursPerDay ?? ''}
+              onChange={e=>{
+                const v=e.target.value;
+                const hours=v===''?undefined:Number(v);
+                updateCompany({pricingHoursPerDay:hours!==undefined&&Number.isFinite(hours)?hours:undefined});
+              }}
+              className="mt-1.5 min-h-12 w-full rounded-xl border border-white/15 bg-[#0b0e15] px-3 py-3 text-base text-white outline-none focus:border-orange-500"
+            />
+          </label>
+        </div>
+        {workSchedule.valid
+          ? <div role="status" className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs leading-relaxed text-emerald-200">
+              <strong>{workDaysPerMonth} dias × {workSchedule.hoursPerDay.toLocaleString('pt-BR')} h/dia = {workHoursPerMonth.toLocaleString('pt-BR')} horas no mês.</strong>
+              <span className="mt-1 block text-slate-300">Custo de cada hora: {formatCurrency(costPerHour)}. O rateio usa apenas as despesas mensais cadastradas.</span>
+            </div>
+          : <p role="status" className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">{workSchedule.message}</p>
+        }
+        <p className="text-[11px] leading-relaxed text-slate-400">
+          {syncStatus==='saved'?'Configuração salva na nuvem.':syncStatus==='saving'?'Salvando configuração na nuvem…':'Falha ao sincronizar. Verifique o aviso da nuvem e tente novamente.'}
+          {' '}Você pode alterar a jornada a qualquer momento. Os valores não são preenchidos automaticamente nem afetam diretamente os orçamentos anteriores.
+        </p>
+      </section>
+
+      {calculationError && workSchedule.valid && <div role="alert" className="p-3 rounded-xl bg-rose-950/70 text-rose-300 text-xs">{calculationError} Corrija os parâmetros para calcular o preço.</div>}
 
       {/* Tabs */}
       <div className="grid grid-cols-3 gap-2 p-1 rounded-2xl bg-[#141822] border border-white/5 text-xs font-semibold text-center">
@@ -130,7 +184,7 @@ export const PricingFormationView: React.FC = () => {
             <div className="p-3 rounded-2xl bg-[#141822] border border-white/5 text-center">
               <span className="text-[10px] text-slate-400 font-medium block">Custo / Dia</span>
               <span className="text-sm font-bold text-amber-400 block mt-0.5">
-                {formatCurrency(costPerDay)}
+                {workSchedule.valid ? formatCurrency(costPerDay) : '—'}
               </span>
               <span className="text-[10px] text-slate-500">{workDaysPerMonth} dias</span>
             </div>
@@ -138,7 +192,7 @@ export const PricingFormationView: React.FC = () => {
             <div className="p-3 rounded-2xl bg-[#141822] border border-white/5 text-center">
               <span className="text-[10px] text-slate-400 font-medium block">Custo / Hora</span>
               <span className="text-sm font-bold text-emerald-400 block mt-0.5">
-                {formatCurrency(costPerHour)}
+                {workSchedule.valid ? formatCurrency(costPerHour) : '—'}
               </span>
               <span className="text-[10px] text-slate-500">{workHoursPerMonth}h úteis</span>
             </div>
@@ -262,8 +316,9 @@ export const PricingFormationView: React.FC = () => {
               </div>
             </div>
 
+            {!workSchedule.valid&&<p role="status" className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Configure os dias por mês e as horas por dia no quadro acima para calcular o preço recomendado sem valores fictícios.</p>}
             {/* Resultado do Cálculo */}
-            <div className="mt-4 pt-3 border-t border-white/5 space-y-2.5">
+            {workSchedule.valid&&<div className="mt-4 pt-3 border-t border-white/5 space-y-2.5">
               <div className="flex items-center justify-between text-xs text-slate-400">
                 <span>Custo Direto Operacional:</span>
                 <span className="font-semibold text-white font-mono">
@@ -294,7 +349,7 @@ export const PricingFormationView: React.FC = () => {
                   </span>
                 </div>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
       )}
