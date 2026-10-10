@@ -1,4 +1,5 @@
 import type { Client, CompanySettings, Quote, QuoteItem, QuoteVisibilitySettings } from '../types';
+import {costReferenceName,adjustmentIndexName} from './constructionReferences.js';
 
 /**
  * OrçaPro print/PDF document. Only persisted quote/company/client fields are rendered.
@@ -105,6 +106,9 @@ export function buildQuoteDocument({ quote, company, client }: QuoteDocumentInpu
     (v.showTaxes && quote.taxRate > 0 && v.showTotal) ? `<div class="minor"><span>Tributos considerados (${amount(quote.taxRate)}%, incluídos):</span><b>${money(quote.total * quote.taxRate / 100)}</b></div>` : ''
   ].filter(Boolean).join('');
   const notes = [quote.paymentTerms ? `<div><b>Formas de pagamento:</b> ${field(quote.paymentTerms)}</div>` : '', quote.notes ? `<div>${field(quote.notes)}</div>` : '', company.termsAndConditions ? `<div>${field(company.termsAndConditions)}</div>` : '', v.showPix && company.pixKey ? `<div><b>Pix (${field(company.pixType)}):</b> ${field(company.pixKey)}</div>` : ''].filter(Boolean).join('');
+  const referenceInfo=quote.referenceSettings
+    ? `<section class="card" style="margin-bottom:9px;font-size:11px"><b>Base de custos informada:</b> ${field(costReferenceName(quote.referenceSettings))} · <b>Índice de reajuste:</b> ${field(adjustmentIndexName(quote.referenceSettings))}${quote.referenceSettings.baseMonth?' · Competência: '+field(quote.referenceSettings.baseMonth):''}${quote.referenceSettings.uf?' · UF: '+field(quote.referenceSettings.uf):''}<div style="font-size:10px;color:#b4bed0;margin-top:4px">Referência declarada pelo responsável; não implica uso automático de coeficientes, atualização monetária ou valores corrigidos. Condições de reajuste precisam estar previstas no contrato.</div></section>`
+    : '';
   const pageTitle = `Orçamento ${quote.number} - ${brandTitle}`;
   const template = quote.modelTemplate === 'moderno' ? 'moderno' : quote.modelTemplate === 'profissional' ? 'profissional' : 'padrao';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${field(pageTitle)}</title>
@@ -151,6 +155,7 @@ h2{margin:0 0 9px;color:white;display:flex;align-items:center;gap:8px;font-size:
 <div class="meta">${svgIcon('calendar')}<div><label>Válido até</label><b>${date(quote.validUntil)}</b></div></div>${quote.executionDeadline ? `<div class="meta">${svgIcon('clock')}<div><label>Prazo de execução</label><b>${field(quote.executionDeadline)}</b></div></div>` : ''}
 </div></div></header>
 <section class="card parties"><div class="party"><div class="round-icon">${svgIcon('building')}</div><div><div class="party-label">Empresa</div><div class="party-title">${field(brandTitle)}</div><div class="party-details">${detail(company.document ? `CPF/CNPJ: ${company.document}` : '')}${detail(company.address)}${detail(addr)}${detail(company.whatsapp || company.phone)}${detail(company.email)}</div></div></div><div class="party"><div class="round-icon">${svgIcon('user')}</div><div><div class="party-label">Cliente</div><div class="party-title">${field(quote.clientName)}</div><div class="party-details">${detail(client?.document ? `CPF/CNPJ: ${client.document}` : '')}${detail(client?.address)}${detail(custAddr)}${detail(quote.clientPhone)}${detail(quote.clientEmail)}</div></div></div></section>
+${referenceInfo}
 ${itemsTable(shownServices,'Serviços','tools',v)}${itemsTable(shownProducts,'Produtos','product',v)}
 ${v.showTotal ? `<section class="summary-card"><div class="summary-art">${svgIcon('bolt')}</div><div class="summary-info"><div class="summary-list">${summaryRows}</div><div class="summary-total"><span>Total estimado:</span><span class="total-amount">${money(quote.total)}</span></div></div></section>` : ''}
 ${v.showTerms && notes ? `<section class="card"><div class="note-title">${svgIcon('note')}<span>Observações</span></div><div class="note-body">${notes}</div></section>` : ''}
