@@ -3,6 +3,7 @@ import {SinapiReferencePicker} from './SinapiReferencePicker';
 import type {SinapiComposition} from '../../types/schedule';
 import {categoryLabel} from '../../utils/sinapiCategories';
 import {withSinapiProvenance} from '../../utils/sinapiRegional';
+import {sameServiceUnit} from '../../utils/quoteSchedule';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Plus, Search, Wrench, Boxes, Briefcase, Trash2, Edit3, X, Zap } from 'lucide-react';
@@ -108,11 +109,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (sinapiNeedsSalePrice && (!Number.isFinite(price)||price<=0)) {window.alert('Informe um preço de VENDA maior que zero. A tabela de HH não contém preços.');return;}
+    if (type==='servico' && sinapiNeedsSalePrice && (!Number.isFinite(price)||price<=0)) {window.alert('Informe um preço de VENDA maior que zero. A tabela de HH não contém preços.');return;}
     if (selectedSinapi && (!sinapiServiceUF||!sinapiServiceRegime)) {
       window.alert('Selecione a UF da obra e o regime de encargos para salvar a composição SINAPI.');return;
     }
-    let analytical=selectedSinapi||undefined;
+    let analytical=type==='servico'?(selectedSinapi||undefined):undefined;
+    if(analytical && !sameServiceUnit(unit,analytical.unit)){
+      window.alert(`A composição SINAPI ${analytical.code} exige a unidade ${analytical.unit}. Não altere a unidade técnica após a seleção.`);return;
+    }
     if(analytical)try{analytical=withSinapiProvenance(analytical,{
       reference:analytical.reference||'',uf:sinapiServiceUF as SinapiUF,regime:sinapiServiceRegime as SinapiRegime
     });}catch(err){window.alert(err instanceof Error?err.message:'Referência SINAPI inválida.');return;}
@@ -433,7 +437,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      setType('material');
+                      setType('material');setSelectedSinapi(null);setSinapiNeedsSalePrice(false);setShowSinapiPicker(false);
                       setUnit('un');
                     }}
                     className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all ${
@@ -447,7 +451,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                     type="button"
                     onClick={() => {
                       setType('servico');
-                      setUnit('serviço');
+                      if(type!=='servico')setUnit('serviço');
+                      setShowSinapiPicker(true);
                     }}
                     className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all ${
                       type === 'servico' ? 'text-white shadow-sm' : 'bg-[#1b202c] text-slate-400'
@@ -459,7 +464,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      setType('mao_de_obra');
+                      setType('mao_de_obra');setSelectedSinapi(null);setSinapiNeedsSalePrice(false);setShowSinapiPicker(false);
                       setUnit('hora');
                     }}
                     className={`py-2 px-2 rounded-xl text-xs font-semibold transition-all ${
