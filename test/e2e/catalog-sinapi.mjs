@@ -56,7 +56,7 @@ try{
  assert.equal(await globalSearch.isEnabled(),true,'A busca SINAPI nunca pode ficar bloqueada');
  await globalSearch.fill('tomada');
  assert.equal(await globalSearch.inputValue(),'tomada');
- await region.getByText(/Ainda não existe uma base analítica carregada/).waitFor();
+ await region.getByText(/Busca SINAPI no Supabase/).waitFor();
  await globalSearch.fill('');
  await region.getByRole('group',{name:'Selecionar serviço do catálogo'})
    .getByRole('button',{name:/Instalar tomada na parede/}).click();
