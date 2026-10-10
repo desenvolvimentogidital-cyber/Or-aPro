@@ -92,7 +92,7 @@ try{
  // Orçamento também pode escolher qualquer composição da base global,
  // mesmo sem estar cadastrada no catálogo pessoal.
  await nav.getByRole('button',{name:'Orçamentos'}).click();
- await page.getByTitle('Novo Orçamento').click();
+ await page.getByRole('button',{name:'Novo Orçamento',exact:true}).click();
  await page.getByRole('button',{name:'Adicionar item'}).click();
  await page.getByRole('button',{name:/Adicionar serviço da tabela SINAPI \(todos os 9.136\)/}).click();
  const quotePicker=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
