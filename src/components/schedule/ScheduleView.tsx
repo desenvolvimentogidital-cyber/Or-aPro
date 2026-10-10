@@ -283,8 +283,9 @@ export const ScheduleView:React.FC=()=>{
     if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
     }
-    if(!usableSinapiComposition(chosen) && (!regionalUF || !regionalRegime || !validCompetence(reference.trim()))){
-      setError('Antes de gerar as etapas informe competência, UF e encargos da planilha SINAPI.');return;
+    const sourceMonth=chosen.reference||reference.trim();
+    if(!usableSinapiComposition(chosen) && (!regionalUF || !regionalRegime || !validCompetence(sourceMonth))){
+      setError('Informe a UF e os encargos SINAPI. A competência já vem da composição salva quando disponível.');return;
     }
     const input=(quoteTargetDays[item.id]||'').trim();
     const days=input===''?undefined:Number(input);
@@ -292,7 +293,7 @@ export const ScheduleView:React.FC=()=>{
     let simulated:ReturnType<typeof simulateCrewForQuote>;
     try{
       composition=usableSinapiComposition(chosen)?chosen:
-        withSinapiProvenance(chosen,{reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime});
+        withSinapiProvenance(chosen,{reference:sourceMonth,uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime});
       simulated=simulateCrewForQuote(composition,item.quantity,current.hoursPerDay,current.efficiency,days);
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível dimensionar a equipe.');return;}
     const newTask:ScheduleTask={
@@ -319,10 +320,11 @@ export const ScheduleView:React.FC=()=>{
       if(usableSinapiComposition(selectedCatalogComposition)){
         composition=selectedCatalogComposition;
       }else {
-        if(!regionalUF||!regionalRegime||!validCompetence(reference.trim()))
-          throw Error('Informe a competência, UF e encargos da planilha antes de usar esta composição.');
+        const sourceMonth=selectedCatalogComposition.reference||reference.trim();
+        if(!regionalUF||!regionalRegime||!validCompetence(sourceMonth))
+          throw Error('Informe a UF e os encargos SINAPI. A competência da composição salva é preservada.');
         composition=withSinapiProvenance(selectedCatalogComposition,{
-          reference:reference.trim(),uf:regionalUF,regime:regionalRegime
+          reference:sourceMonth,uf:regionalUF,regime:regionalRegime
         });
       }
       // A equipe de 1 pessoa por função é uma SIMULAÇÃO, revisável na etapa.
