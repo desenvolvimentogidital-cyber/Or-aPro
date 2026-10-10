@@ -61,7 +61,8 @@ try{
   await panel.getByLabel('Dias trabalhados por mês').fill('22');
   await panel.getByLabel('Horas trabalhadas por dia').fill('8');
   await panel.getByText(/176 horas no mês/).waitFor();
-  await panel.getByText(/Custo de cada hora: R\$ 92,05/).waitFor();
+  const rateText=await panel.getByText(/Custo de cada hora:/).textContent();
+  assert.match((rateText||'').replace(/\\s/g,' '),/Custo de cada hora: R\\$ 92,05/);
   await page.getByText('R$ 736,36').waitFor();
   await page.getByText('R$ 92,05').first().waitFor();
   await page.waitForTimeout(1400);
