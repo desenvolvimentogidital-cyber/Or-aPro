@@ -37,8 +37,10 @@ import { AdminPanelView } from '../admin/AdminPanelView';
 import { QuotePreviewModal } from '../quotes/QuotePreviewModal';
 import { MoreMenuDrawer } from '../menu/MoreMenuDrawer';
 import { NotificationsDrawer } from '../notifications/NotificationsDrawer';
+import {useSelectNumericOnFocus} from '../../utils/numericEditing';
 
 export const AppLayout: React.FC = () => {
+  useSelectNumericOnFocus();
   const {
     activeView,
     setActiveView,
