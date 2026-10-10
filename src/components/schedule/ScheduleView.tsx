@@ -574,7 +574,7 @@ export const ScheduleView:React.FC=()=>{
           </label>
         </div>
         {!usableSinapiComposition(selectedCatalogComposition)&&<div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 text-xs text-amber-100">
-          <p>Confirme a UF e o regime da composição analítica ({selectedCatalogComposition.reference||'competência não informada'}) antes de criar a etapa.</p>
+          <p>Confirme a UF e o regime da composição analítica ({reference||'competência não informada'}) antes de criar a etapa.</p>
           <div className="grid gap-2 sm:grid-cols-2">
             <select aria-label="UF para composição analítica" className={control} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF|'')}>
               <option value="">Escolher UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
