@@ -138,7 +138,7 @@ export const ScheduleView:React.FC=()=>{
   },[session?.user.id,session?.access_token,savedLibraryTerm,savedLibraryCount]);
   const physicalMoney=current?physicalFinancial(current,attached):null;
   const filtered=useMemo(()=>[...imported,...savedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,search]);
-  const selected=[...imported,...savedCompositions].find(c=>`${c.code}|${c.unit}`===selectedComposition);
+  const selected=[...imported,...savedCompositions].find(c=>compositionIdentity(c)===selectedComposition);
   const catalogServices=useMemo(()=>{
     const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     return catalog.filter(item=>item.type==='servico' &&
@@ -278,8 +278,8 @@ export const ScheduleView:React.FC=()=>{
     if(current.tasks.some(t=>t.quoteItemId===item.id)){setError('Este item já está vinculado ao cronograma.');return;}
     const key=quoteComposition[item.id]||'';
     const stored=savedSinapiForQuote(item,catalog);
-    const chosen=knownCompositions.find(c=>`${c.code}|${c.unit}`===key)
-      || (stored && `${stored.code}|${stored.unit}`===key?stored:undefined);
+    const chosen=knownCompositions.find(c=>compositionIdentity(c)===key)
+      || (stored && compositionIdentity(stored)===key?stored:undefined);
     if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
     }
@@ -439,7 +439,7 @@ export const ScheduleView:React.FC=()=>{
       {importInfo&&<p className="rounded-xl bg-white/5 p-3 text-[11px] leading-relaxed text-slate-300">{importInfo}</p>}
       {(imported.length>0||(savedLibraryCount!==null&&savedLibraryCount>0))&&<><p className="text-[11px] text-slate-300">As composições analíticas importadas são salvas no Supabase. Digite o nome ou código para consultar HH, inclusive depois de sair e voltar ao aplicativo.</p>
       <label className="relative block"><Search size={15} className="absolute left-3 top-3.5 text-slate-500"/><input className={`${control} pl-9`} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por código ou descrição"/></label>
-      <div className="max-h-64 space-y-1 overflow-y-auto">{filtered.map(c=><button type="button" key={`${c.code}|${c.unit}`} onClick={()=>{setSelectedComposition(`${c.code}|${c.unit}`);if(c.reference)setReference(c.reference);}} className={`w-full rounded-xl border p-3 text-left ${selectedComposition===`${c.code}|${c.unit}`?'border-orange-500/60 bg-orange-500/10':'border-white/5 bg-[#0d1119]'}`}><div className="flex items-start justify-between gap-2"><strong className="text-xs text-slate-200">{c.code} · {c.unit}</strong><span className="text-[11px] text-orange-300">{fmt(c.labor.reduce((s,l)=>s+l.hoursPerUnit,0),4)} HH/{c.unit}</span></div><p className="mt-1 text-[11px] leading-snug text-slate-400">{c.description}</p></button>)}</div>
+      <div className="max-h-64 space-y-1 overflow-y-auto">{filtered.map(c=><button type="button" key={`${c.code}|${c.unit}`} onClick={()=>{setSelectedComposition(compositionIdentity(c));if(c.reference)setReference(c.reference);}} className={`w-full rounded-xl border p-3 text-left ${selectedComposition===compositionIdentity(c)?'border-orange-500/60 bg-orange-500/10':'border-white/5 bg-[#0d1119]'}`}><div className="flex items-start justify-between gap-2"><strong className="text-xs text-slate-200">{c.code} · {c.unit}</strong><span className="text-[11px] text-orange-300">{fmt(c.labor.reduce((s,l)=>s+l.hoursPerUnit,0),4)} HH/{c.unit}</span></div><p className="mt-1 text-[11px] leading-snug text-slate-400">{c.description}</p></button>)}</div>
       {selected&&<div className="space-y-3 rounded-xl border border-orange-500/20 bg-orange-500/5 p-3"><div><strong className="text-xs">{selected.description}</strong><p className="mt-1 text-[10px] text-slate-400">{selected.labor.map(l=>`${l.role}: ${fmt(l.hoursPerUnit,5)} h/${selected.unit}`).join(' · ')}</p></div>
         {current?.quoteId&&<label className="block text-[11px] text-slate-400">Usar quantitativo de item do orçamento (opcional)<select className={`${control} mt-1`} value={selectedQuoteItem} onChange={e=>{setSelectedQuoteItem(e.target.value);const item=attached?.items.find(i=>i.id===e.target.value);if(item)setQuantity(String(item.quantity));}}><option value="">Inserir quantitativo manualmente</option>{attached?.items.filter(i=>sameServiceUnit(i.unit,selected.unit)).map(i=><option key={i.id} value={i.id}>{i.name} — {i.quantity} {i.unit}</option>)}</select></label>}
         <label className="block text-[11px] text-slate-400">Quantidade de serviço ({selected.unit})<input type="text" inputMode="decimal" value={quantity} onChange={e=>setQuantity(e.target.value)} className={`${control} mt-1`} placeholder={`Quantidade em ${selected.unit}`}/></label>
@@ -606,12 +606,12 @@ export const ScheduleView:React.FC=()=>{
         const expanded=activeQuoteItem===item.id;
         const query=quoteSearch[item.id]||'';
         const remembered=savedSinapiForQuote(item,catalog);
-        const options=remembered && !knownCompositions.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
+        const options=remembered && !knownCompositions.some(c=>compositionIdentity(c)===compositionIdentity(remembered))
           ? [...knownCompositions,remembered]:knownCompositions;
         const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
           .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
         const selectedKey=quoteComposition[item.id]||'';
-        const chosen=options.find(c=>`${c.code}|${c.unit}`===selectedKey);
+        const chosen=options.find(c=>compositionIdentity(c)===selectedKey);
         if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
         const targetInput=(quoteTargetDays[item.id]||'').trim();
         const targetDays=targetInput?Number(targetInput):undefined;
@@ -639,9 +639,9 @@ export const ScheduleView:React.FC=()=>{
                document.getElementById('orcapro-sinapi-lookup')?.scrollIntoView({behavior:'smooth',block:'start'});
              }} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-sky-500/40 bg-sky-500/10 p-3 text-xs font-bold text-sky-200 hover:bg-sky-500/20"><Search size={15}/> Pesquisar este serviço no catálogo SINAPI online</button>
             <label className="block text-[11px] text-slate-400">Confirme a composição adequada — apenas unidade {item.unit}
-              <select className={`${control} mt-1`} value={selectedKey} onChange={e=>{setQuoteComposition(old=>({...old,[item.id]:e.target.value}));const found=options.find(c=>`${c.code}|${c.unit}`===e.target.value);if(found?.reference)setReference(found.reference);}}>
+              <select className={`${control} mt-1`} value={selectedKey} onChange={e=>{setQuoteComposition(old=>({...old,[item.id]:e.target.value}));const found=options.find(c=>compositionIdentity(c)===e.target.value);if(found?.reference)setReference(found.reference);}}>
                 <option value="">Selecione uma composição SINAPI</option>
-                {matches.map(c=><option key={`${c.code}|${c.unit}`} value={`${c.code}|${c.unit}`}>{c.code} · {c.description.slice(0,110)}</option>)}
+                {matches.map(c=><option key={compositionIdentity(c)} value={compositionIdentity(c)}>{c.code} · {c.reference||"?"} · {c.description.slice(0,100)}</option>)}
               </select>
             </label>
              {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição analítica com unidade “{item.unit}” nesta base. Use a busca online ou importe outra referência. Não será atribuído valor financeiro incorreto.</p>}
