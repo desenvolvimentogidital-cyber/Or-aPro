@@ -230,7 +230,11 @@ export function buildQuotePdf({quote,company,client}:{quote:Quote;company:Compan
 }
 
 export function makeQuotePdfFile(args:{quote:Quote;company:CompanySettings;client?:Client|null}):File {
-  return new File([buildQuotePdf(args)],quotePdfFilename(args.quote.number),{type:'application/pdf'});
+  const bytes=buildQuotePdf(args);
+  // TS 7 tipa Uint8Array como ArrayBufferLike; File exige BlobPart<ArrayBuffer>.
+  const buffer=new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return new File([buffer],quotePdfFilename(args.quote.number),{type:'application/pdf'});
 }
 
 /** Acionar dentro de um clique; o navegador pede ao usuário app e destinatário. */
