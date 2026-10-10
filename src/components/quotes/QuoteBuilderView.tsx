@@ -27,6 +27,7 @@ import { quoteTotals, newId, dateKey } from '../../utils/quoteMath';
 import { ReferencePreferences } from '../references/ReferencePreferences';
 import {defaultConstructionReferences,validReferenceSettings,type ConstructionReferenceSettings} from '../../utils/constructionReferences';
 import { EditableNumericInput } from '../common/EditableNumericInput';
+import {laborDemandForQuantity, sameServiceUnit} from '../../utils/quoteSchedule';
 
 export const QuoteBuilderView: React.FC = () => {
   const { clients, catalog, addQuote, updateQuote, editingQuote, setEditingQuote, draftClientId, setDraftClientId, getNextQuoteNumber, setActiveView, setActiveQuoteForPreview } = useApp();
@@ -268,6 +269,14 @@ export const QuoteBuilderView: React.FC = () => {
             </div>
           ) : (
             items.map(item => {
+              // Exibe as HH de uma composição previamente associada, sem confundir
+              // produtividade física com preço de mão de obra no orçamento.
+              const sinapi = item.sinapiComposition || catalog.find(c=>c.id===item.catalogItemId)?.sinapiComposition;
+              let labor: ReturnType<typeof laborDemandForQuantity> = [];
+              try {
+                if (item.type==='servico' && sinapi && sameServiceUnit(item.unit,sinapi.unit))
+                  labor=laborDemandForQuantity(sinapi,item.quantity);
+              } catch {/* Composição incompleta: não apresentar HH artificiais. */}
               const icon =
                 item.type === 'servico' ? (
                   <Wrench className="w-4 h-4 text-sky-400" />
@@ -280,7 +289,7 @@ export const QuoteBuilderView: React.FC = () => {
               return (
                 <div
                   key={item.id}
-                  className="p-2.5 rounded-xl bg-[#1b202c] border border-white/5 flex items-center justify-between"
+                  className="p-2.5 rounded-xl bg-[#1b202c] border border-white/5 flex flex-wrap items-center justify-between gap-2"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
@@ -293,6 +302,9 @@ export const QuoteBuilderView: React.FC = () => {
                         <span>•</span>
                         <span>{formatCurrency(item.unitPrice)}</span>
                       </div>
+                      {labor.length>0 && <p className="mt-1 text-[10px] leading-relaxed text-sky-300" title={labor.map(l=>`${l.role}: ${l.hours.toFixed(3)} HH`).join(' | ')}>
+                        SINAPI {sinapi?.code} · {labor.reduce((sum,l)=>sum+l.hours,0).toLocaleString('pt-BR',{maximumFractionDigits:2})} HH referenciais · dimensione a equipe no Cronograma
+                      </p>}
                     </div>
                   </div>
 
