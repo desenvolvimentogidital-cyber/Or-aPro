@@ -6,7 +6,7 @@ Antes, cadastrar um serviço em **Serviços** não o tornava selecionável no m�
 ## Novo fluxo mobile e web
 1. Cadastre **Instalar tomada** (ou outro serviço real) em **Serviços** com seu preço comercial e unidade.
 2. Em **Cronograma SINAPI**, selecione ou crie um cronograma.
-3. Importe **SINAPI Referência, aba Analítico** para carregar coeficientes de mão de obra quando ainda não existir uma associação guardada.
+3. Importe **SINAPI Referência, aba Analítico** para carregar coeficientes de mão de obra quando ainda não existir uma associação guardada. **Ao navegar entre Serviços, Orçamentos e Cronograma, as composições importadas permanecem na memória da mesma sessão autenticada**; o importador não é reiniciado ao trocar de módulo.
 4. No quadro **Meus serviços → SINAPI**, busque o nome salvo no catálogo e escolha o serviço.
 5. Busque por termos simples (ex.: `tomada`, `instalação tomada`, código) e selecione a **composição desejada** da fonte importada. A lista é sugestiva; o sistema nunca vincula automaticamente um serviço apenas por nome.
 6. Informe **quantidade real na unidade SINAPI** e, se desejar, um prazo para simulação inicial de equipe. Confirme UF, competência e encargos do arquivo quando estiver usando uma composição recém-importada.
@@ -19,7 +19,7 @@ Itens novos criados a partir do catálogo guardam o ID da origem e, quando exist
 Uma unidade de orçamento genérica (`serviço`) **não** vira automaticamente `UN`, `M²` ou `M³`. Quando são diferentes, o usuário pode criar uma etapa independente pela nova área do catálogo, informar quantidade explicitamente e vincular o financeiro somente após corrigir as unidades. Isso impede valores físico-financeiros incorretos.
 
 ## Integridade
-- Sem atualização de schema/RLS, chave, endpoint ou autenticação. O campo `sinapiComposition` é opcional em cada item de catálogo/quote do workspace JSONB já existente.
+- Sem atualização de schema/RLS, chave, endpoint ou autenticação. A memória da planilha é temporária, associada ao componente AppProvider do usuário e descartada no logout; não é salva integralmente no servidor. O campo `sinapiComposition` é opcional em cada item de catálogo/quote do workspace JSONB já existente.
 - Composição salva precisa de código, descrição, unidade, planilha, aba, mês, UF, regime e **coeficientes HH válidos**. Não aceita custo CSD/CCD isolado como produtividade.
 - **Não** consulta uma API SINAPI externa por nome, nem finge ter todos os serviços oficiais sem fonte importada. O usuário precisa ter importado a referência Analítico ao menos uma vez para vincular um serviço novo.
 - Preço de venda e custo do catálogo não são modificados ao vincular SINAPI. Materiais/equipamentos detalhados não são deduzidos dos HH.
