@@ -51,10 +51,21 @@ try{
    .getByRole('button',{name:'Cronograma'}).click();
  const region=page.getByRole('region',{name:'Serviços cadastrados e SINAPI'});
  await region.waitFor();
+ // Regressão: Android deve abrir teclado para SINAPI mesmo sem serviço selecionado e sem dados carregados.
+ const globalSearch=region.getByLabel('Buscar composição SINAPI para o serviço');
+ assert.equal(await globalSearch.isEnabled(),true,'A busca SINAPI nunca pode ficar bloqueada');
+ await globalSearch.fill('tomada');
+ assert.equal(await globalSearch.inputValue(),'tomada');
+ await region.getByText(/Ainda não existe uma base analítica carregada/).waitFor();
+ await globalSearch.fill('');
  await region.getByRole('group',{name:'Selecionar serviço do catálogo'})
    .getByRole('button',{name:/Instalar tomada na parede/}).click();
- await region.getByText(/Ainda não há composições analíticas/).waitFor();
- await page.locator('input[type=file][accept*=".xlsx"]').setInputFiles({
+ // Com o painel fechado, o CTA da busca precisa abrir de verdade o seletor de arquivos Android.
+ await page.getByRole('button',{name:/Importar composições SINAPI/}).click();
+ const chooserPromise=page.waitForEvent('filechooser');
+ await region.getByRole('button',{name:/Carregar composição SINAPI do arquivo/}).click();
+ const chooser=await chooserPromise;
+ await chooser.setFiles({
    name:'sinapi-teste-ficticio.csv',mimeType:'text/csv',buffer:Buffer.from(csv,'utf8')
  });
  await page.getByText(/Total: 2 serviço/).waitFor({timeout:15000});
@@ -71,12 +82,15 @@ try{
  assert.equal(await page.getByLabel('Encargos SINAPI').inputValue(),'sem_desoneracao');
  await reopened.getByRole('group',{name:'Selecionar serviço do catálogo'})
    .getByRole('button',{name:/Instalar tomada na parede/}).click();
+ await reopened.getByLabel('Buscar composição SINAPI para o serviço').fill('1000');
+ assert.ok(await reopened.getByRole('group',{name:'Escolher composição SINAPI'}).getByRole('button',{name:/SINAPI 100001/}).isVisible(),
+   'Prefixo de código SINAPI deve funcionar');
  await reopened.getByLabel('Buscar composição SINAPI para o serviço').fill('instalação tomada');
  await region.getByRole('group',{name:'Escolher composição SINAPI'})
    .getByRole('button',{name:/SINAPI 100001/}).click();
  await region.getByText(/unidade do catálogo é/).waitFor();
  await region.getByLabel('Quantidade na unidade SINAPI').fill('6');
- await region.getByRole('button',{name:/Adicionar etapa ao cronograma e salvar vínculo SINAPI/}).click();
+ await region.getByRole('button',{name:/Adicionar etapa e salvar vínculo SINAPI/}).click();
  await region.getByRole('status').getByText(/Etapa criada/).waitFor();
  await page.waitForTimeout(1050);
  assert.equal(store.payload.schedules[0].tasks.length,1);
@@ -95,17 +109,38 @@ try{
    .getByRole('button',{name:'Cronograma'}).click();
  const again=page.getByRole('region',{name:'Serviços cadastrados e SINAPI'});
  await again.waitFor();
+ const codeSearch=again.getByLabel('Buscar composição SINAPI para o serviço');
+ assert.equal(await codeSearch.isEnabled(),true);
+ await codeSearch.fill('100001');
+ assert.ok(await again.getByRole('group',{name:'Escolher composição SINAPI'})
+   .getByRole('button',{name:/SINAPI 100001/}).isVisible(),
+   'Busca por código deve listar SINAPI já salvo, mesmo sem escolher serviço');
+ await codeSearch.fill('');
  await again.getByRole('group',{name:'Selecionar serviço do catálogo'})
    .getByRole('button',{name:/Instalar tomada na parede/}).click();
  await again.getByRole('group',{name:'Escolher composição SINAPI'})
    .getByRole('button',{name:/SINAPI 100001/}).click();
  await again.getByLabel('Quantidade na unidade SINAPI').fill('4');
- await again.getByRole('button',{name:/Adicionar etapa ao cronograma e salvar vínculo SINAPI/}).click();
+ await again.getByRole('button',{name:/Adicionar etapa e salvar vínculo SINAPI/}).click();
  await again.getByRole('status').getByText(/Etapa criada/).waitFor();
  await page.waitForTimeout(1000);
  assert.equal(store.payload.schedules[0].tasks.length,2);
  assert.equal(store.payload.schedules[0].tasks[1].quantity,4);
  assert.equal(store.payload.catalog[0].sinapiComposition?.labor?.length,2);
+ // Busca permanece acessível mesmo que ainda não exista cronograma.
+ store.payload.schedules=[];
+ store.revision+=1;
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.getByRole('navigation',{name:'Navegação Principal'})
+   .getByRole('button',{name:'Cronograma'}).click();
+ const noPlan=page.getByRole('region',{name:'Serviços cadastrados e SINAPI'});
+ await noPlan.waitFor();
+ assert.equal(await noPlan.getByLabel('Buscar composição SINAPI para o serviço').isEnabled(),true);
+ await noPlan.getByLabel('Buscar composição SINAPI para o serviço').fill('100001');
+ await noPlan.getByRole('group',{name:'Escolher composição SINAPI'})
+   .getByRole('button',{name:/SINAPI 100001/}).waitFor({state:'visible'});
+ await noPlan.getByRole('button',{name:'Criar cronograma'}).click();
+ await page.getByRole('heading',{name:'Cronograma de execução'}).waitFor();
  assert.deepEqual(pageErrors,[]);
- console.log('PASS Android após login: reutiliza SINAPI salvo sem importar a planilha novamente');
+ console.log('PASS Android: busca por código com ou sem serviço selecionado, inclusive sem cronograma');
 }finally{await browser.close();}
