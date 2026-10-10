@@ -48,7 +48,7 @@ export const ReferencePreferences:React.FC<Props>=({value,onChange})=>{
       </label>}
       <label htmlFor={id+'-month'} className="text-xs font-medium text-slate-200">Competência da referência (opcional)
         <input id={id+'-month'} className={control} aria-label="Competência da base de referência" value={setting.baseMonth||''} maxLength={7}
-          onChange={e=>change({baseMonth:e.target.value})} inputMode="numeric" placeholder="MM/AAAA"/>
+          onChange={e=>change({baseMonth:e.target.value})} inputMode="numeric" placeholder="Ex.: 09/2026"/>
       </label>
       <label htmlFor={id+'-uf'} className="text-xs font-medium text-slate-200">UF de referência (opcional)
         <select id={id+'-uf'} aria-label="UF da base referencial" className={control} value={setting.uf||''} onChange={e=>change({uf:e.target.value})}>
