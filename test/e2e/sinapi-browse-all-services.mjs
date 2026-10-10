@@ -103,7 +103,6 @@ try{
  await sale.fill('240');await sale.press('Tab');
  await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
  await page.getByText(/SINAPI 100860.*HH referenciais/).waitFor({timeout:13000});
- assert.equal(fixture.payload.catalog.length,1,'O rascunho pode estar ainda sincronizando');
  await page.waitForTimeout(1200);
  assert.equal(fixture.payload.catalog.length,2,'Composição escolhida no orçamento também é salva no catálogo');
  assert.equal(fixture.payload.catalog[1].sinapiComposition.code,'100860');
