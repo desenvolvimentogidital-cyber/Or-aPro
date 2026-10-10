@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Upload, Plus, Trash2, HardHat, Clock3, Info, AlertTriangle, Search, FileSpreadsheet, CheckCircle2, BarChart3, Download, ChevronDown, ExternalLink, ArrowUp, ArrowDown, Wrench } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import {countSavedSinapi,searchSavedSinapi,saveSinapiLibrary,isAnalyticalSinapi} from '../../services/sinapiLibrary';
 import { useTheme } from '../../context/ThemeContext';
 import { importSinapiFile } from '../../utils/sinapiFile';
 import {sinapiUFs, withSinapiProvenance, validCompetence, sinapiOriginLabel, type SinapiUF, type SinapiRegime} from '../../utils/sinapiRegional';
@@ -44,6 +46,7 @@ function exportScheduleCSV(schedule:WorkSchedule){
 export const ScheduleView:React.FC=()=>{
   const {schedules,selectedScheduleId,setSelectedScheduleId,addSchedule,updateSchedule,deleteSchedule,quotes,catalog,updateCatalogItem,sinapiSession,setSinapiSession,company,ready,syncStatus}=useApp();
   const {theme}=useTheme();
+  const {session}=useAuth();
   const imported=sinapiSession.compositions;
   const [importInfo,setImportInfo]=useState(sinapiSession.info);
   const reference=sinapiSession.reference;
@@ -78,6 +81,11 @@ export const ScheduleView:React.FC=()=>{
   const [selectedOnline,setSelectedOnline]=useState<SinapiOnlineResult|null>(null);
   const [catalogQuoteItemId,setCatalogQuoteItemId]=useState('');
   const [showImport,setShowImport]=useState(true);
+  const [savedCompositions,setSavedCompositions]=useState<SinapiComposition[]>([]);
+  const [savedLibraryCount,setSavedLibraryCount]=useState<number|null>(null);
+  const [libraryStatus,setLibraryStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const [libraryError,setLibraryError]=useState('');
+  const [libraryProgress,setLibraryProgress]=useState({saved:0,total:0});
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
   const [printUrl,setPrintUrl]=useState('');
@@ -106,9 +114,31 @@ export const ScheduleView:React.FC=()=>{
   const ganttDates=timeline.slice(safeGanttPage*15,(safeGanttPage+1)*15);
   const attached=quotes.find(q=>q.id===current?.quoteId);
   const physical=current?physicalProgress(current):null;
+  const activeQuoteTerm=activeQuoteItem
+    ? quoteSearch[activeQuoteItem]?.trim()||attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
+    : '';
+  const savedLibraryTerm=(catalogSinapiQuery.trim()||activeQuoteTerm||search.trim()).slice(0,100);
+  useEffect(()=>{
+    if(!session)return;
+    let cancelled=false;
+    countSavedSinapi(session).then(count=>{if(!cancelled)setSavedLibraryCount(count);})
+      .catch(e=>{if(!cancelled){setLibraryError(e instanceof Error?e.message:'Biblioteca indisponível.');setLibraryStatus('error');}});
+    return()=>{cancelled=true;};
+  },[session?.user.id]);
+  useEffect(()=>{
+    if(!session||savedLibraryTerm.length<2){setSavedCompositions([]);setLibraryStatus('idle');return;}
+    const controller=new AbortController();
+    setLibraryStatus('loading');
+    const id=window.setTimeout(()=>{
+      searchSavedSinapi(session,savedLibraryTerm,controller.signal)
+        .then(items=>{if(!controller.signal.aborted){setSavedCompositions(items);setLibraryStatus('ready');setLibraryError('');}})
+        .catch(e=>{if(!controller.signal.aborted){setLibraryStatus('error');setLibraryError(e instanceof Error?e.message:'Falha ao pesquisar a base salva.');}});
+    },350);
+    return()=>{window.clearTimeout(id);controller.abort();};
+  },[session?.user.id,session?.access_token,savedLibraryTerm,savedLibraryCount]);
   const physicalMoney=current?physicalFinancial(current,attached):null;
-  const filtered=useMemo(()=>imported.filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,search]);
-  const selected=imported.find(c=>`${c.code}|${c.unit}`===selectedComposition);
+  const filtered=useMemo(()=>[...imported,...savedCompositions].filter(c=>`${c.code} ${c.description} ${c.unit}`.toLowerCase().includes(search.toLowerCase())).slice(0,80),[imported,savedCompositions,search]);
+  const selected=[...imported,...savedCompositions].find(c=>`${c.code}|${c.unit}`===selectedComposition);
   const catalogServices=useMemo(()=>{
     const query=catalogServiceQuery.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
     return catalog.filter(item=>item.type==='servico' &&
@@ -145,12 +175,13 @@ export const ScheduleView:React.FC=()=>{
     };
     // A importação atual é prioritária; composições antigas são mostradas com fonte explícita.
     imported.forEach(collect);
+    savedCompositions.filter(isAnalyticalSinapi).forEach(collect);
     catalog.forEach(item=>{if(usableSinapiComposition(item.sinapiComposition))collect(item.sinapiComposition);});
     schedules.forEach(schedule=>schedule.tasks.forEach(task=>{
       if(usableSinapiComposition(task.composition))collect(task.composition);
     }));
     return items;
-  },[imported,catalog,schedules]);
+  },[imported,savedCompositions,catalog,schedules]);
   const catalogCandidates=useMemo(()=>{
     // Pesquisa SINAPI funciona SEM exigir seleção prévia no catálogo.
     // Quando não há termo nem serviço escolhido, não despeja milhares de itens no Android.
@@ -197,18 +228,28 @@ export const ScheduleView:React.FC=()=>{
   };
   const loadFiles=async(files?:FileList|null)=>{
     if(!files?.length)return;
-    setBusy(true);setError('');setImportInfo('');setSinapiSession({compositions:[],reference:'',uf:'',regime:'',info:''});setSelectedComposition('');
+    setBusy(true);setError('');setImportInfo('');setSelectedComposition('');
     try{
       const reports=[];
       for(const file of Array.from(files))reports.push({file:file.name,report:await importSinapiFile(file)});
       const result=mergeSinapiReports(reports.map(f=>f.report));
-      setSelectedComposition('');
-      const names=reports.map(r=>`${r.file}: ${r.report.compositions.length} composição(ões) elegíveis`).join(' | ');
-      const info=`${names}. Total: ${result.compositions.length} serviço(s) com HH identificadas. ${result.issues.join(' ')}`;
+      const names=reports.map(r=>`${r.file}: ${r.report.compositions.length} composição(ões) analíticas`).join(' | ');
+      const info=`${names}. Total: ${result.compositions.length} composições com HH. ${result.issues.join(' ')}`;
       setImportInfo(info);
-      setSinapiSession({compositions:result.compositions,reference:result.reference||'',uf:'',regime:'',info});
-    }catch(e){setError(e instanceof Error?e.message:'Falha na leitura da planilha.');}
-    finally{setBusy(false);if(fileRef.current)fileRef.current.value='';}
+      setSinapiSession(v=>({...v,compositions:result.compositions,reference:result.reference||v.reference,info}));
+      if(!result.compositions.length)throw Error('Nenhuma composição analítica com HH foi encontrada. Confira o arquivo.');
+      if(!session)throw Error('Entre na sua conta para salvar a biblioteca SINAPI permanentemente.');
+      const month=result.reference||reference;
+      if(!validCompetence(month))throw Error('Informe a competência correta MM/AAAA para salvar esta planilha no banco.');
+      setLibraryProgress({saved:0,total:result.compositions.length});
+      const saved=await saveSinapiLibrary(session,result.compositions,month,
+        (done,total)=>setLibraryProgress({saved:done,total}));
+      setSavedLibraryCount(v=>(v||0)+saved);
+      setImportInfo(info+` Biblioteca de ${saved} composições salva na sua conta na nuvem. Você não precisará importar o arquivo novamente ao retornar.`);
+    }catch(e){
+      setError((e instanceof Error?e.message:'Falha na planilha.')+
+        ' Nenhum orçamento ou etapa existente foi apagado. Se a importação parou, reenvie o mesmo arquivo para continuar sem duplicar códigos.');
+    }finally{setBusy(false);if(fileRef.current)fileRef.current.value='';}
   };
   const append=()=>{
     if(!current||!selected)return;
