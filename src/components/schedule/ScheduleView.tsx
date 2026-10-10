@@ -117,7 +117,7 @@ export const ScheduleView:React.FC=()=>{
   const activeQuoteTerm=activeQuoteItem
     ? quoteSearch[activeQuoteItem]?.trim()||attached?.items.find(i=>i.id===activeQuoteItem)?.name||''
     : '';
-  const savedLibraryTerm=(activeQuoteItem?activeQuoteTerm:(catalogSinapiQuery.trim()||selectedCatalogService?.name.trim()||search.trim())).slice(0,100);
+  const savedLibraryTerm=(activeQuoteItem?activeQuoteTerm:(catalogSinapiQuery.trim()||catalog.find(item=>item.id===catalogSelectedId&&item.type==='servico')?.name.trim()||search.trim())).slice(0,100);
   useEffect(()=>{
     if(!session)return;
     let cancelled=false;
@@ -430,7 +430,7 @@ export const ScheduleView:React.FC=()=>{
     {/* Entrada de arquivos sempre montada: a busca mobile pode abrir o seletor mesmo com painel de importação fechado. */}
     <input aria-label="Importar planilha SINAPI" ref={fileRef} type="file" accept=".xlsx,.csv,.tsv" className="hidden" multiple onChange={e=>void loadFiles(e.target.files)}/>
     <section className={`${tile} space-y-3 p-4`}><button type="button" onClick={()=>setShowImport(v=>!v)} className="flex w-full items-center justify-between text-left"><span className="flex items-center gap-2 text-sm font-semibold"><FileSpreadsheet size={17} style={{color:theme.primaryColor}}/> Importar composições SINAPI</span><ChevronDown size={17} className={`text-slate-400 transition ${showImport?'rotate-180':''}`}/></button>
-      {showImport&&<><p className="text-[11px] leading-relaxed text-slate-400">A CAIXA divulga o relatório analítico mensal em PDF a partir de 2025. O importador atual não lê PDF: para dimensionar equipe, forneça uma planilha analítica compatível em XLSX, CSV ou TSV contendo coeficientes HH. Os XLSX oficiais de custos, percentuais, famílias e manutenções não substituem o relatório analítico.</p>
+      {showImport&&<><p className="text-[11px] leading-relaxed text-slate-400">Envie o arquivo SINAPI Referência com aba Analítico (por exemplo, SINAPI_Referência_2026_09.xlsx). O OrçaPro extrai os coeficientes HH e salva a biblioteca no banco da sua conta. No próximo login, basta pesquisar o serviço: não precisa enviar a planilha novamente. Tabelas apenas de custo não fornecem HH.</p>
       <button onClick={()=>fileRef.current?.click()} disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-orange-500/30 bg-orange-500/10 px-3 py-3 text-xs font-semibold text-orange-200 hover:bg-orange-500/15 disabled:opacity-50"><Upload size={17}/>{busy?(libraryProgress.total?`Salvando ${libraryProgress.saved.toLocaleString('pt-BR')} de ${libraryProgress.total.toLocaleString('pt-BR')} composições na nuvem…`:'Lendo planilha…'):'Importar e salvar biblioteca SINAPI na nuvem'}</button>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><label className="block text-[11px] text-slate-400">Competência (MM/AAAA)<input className={`${control} mt-1`} value={reference} maxLength={7} onChange={e=>setReference(e.target.value)} placeholder="MM/AAAA"/></label><label className="block text-[11px] text-slate-400">UF da referência<select className={`${control} mt-1`} value={regionalUF} onChange={e=>setRegionalUF(e.target.value as SinapiUF | '')}><option value="">Selecione a UF</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}</select></label><label className="block text-[11px] text-slate-400">Encargos SINAPI<select className={`${control} mt-1`} value={regionalRegime} onChange={e=>setRegionalRegime(e.target.value as SinapiRegime | '')}><option value="">Selecione</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option></select></label></div><p className="text-[10px] text-amber-300">A planilha analítica informa HH, não preços. UF e encargos identificam a referência declarada e NÃO modificam os coeficientes nem calculam custo automaticamente. Selecione o regime correspondente ao documento.</p>
       <button type="button" onClick={exportModelCSV} className="mr-3 text-[11px] text-orange-300 hover:underline">Baixar modelo de colunas (CSV vazio)</button>
@@ -451,6 +451,13 @@ export const ScheduleView:React.FC=()=>{
       <div>
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Wrench size={18} className="text-orange-400"/> Meus serviços → SINAPI</h2>
         <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise por nome ou código. O OrçaPro consulta composições analíticas salvas e também um catálogo online de terceiros, identificado separadamente. Você escolhe o serviço correto; horas-homem não são inventadas.</p>
+        <p role="status" className="mt-2 rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-3 text-xs text-emerald-100">
+          {savedLibraryCount===null?'Verificando biblioteca SINAPI na sua conta…':`${savedLibraryCount.toLocaleString('pt-BR')} composição(ões) analítica(s) guardadas no Supabase.`}
+          {' '}Busque por nome ou código para carregar HH e profissão.
+        </p>
+        {libraryStatus==='loading'&&<p role="status" className="mt-1 text-xs text-sky-200">Procurando “{savedLibraryTerm}” na sua biblioteca…</p>}
+        {libraryStatus==='ready'&&<p role="status" className="mt-1 text-xs text-emerald-200">{savedCompositions.length} resultado(s) na biblioteca salva para “{savedLibraryTerm}”.</p>}
+        {libraryStatus==='error'&&<p role="alert" className="mt-1 text-xs text-amber-200">{libraryError}</p>}
         {!current&&<div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
           <p className="text-xs text-amber-100">Você pode pesquisar agora. Para adicionar o resultado à obra, crie primeiro um cronograma.</p>
           <button type="button" onClick={add} className="min-h-11 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white">Criar cronograma</button>
