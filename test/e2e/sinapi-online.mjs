@@ -83,7 +83,7 @@ try{
   assert.equal(task.quoteItemId,'item-chuveiro');
   assert.equal(data.payload.catalog[0].sinapiComposition,undefined,'Não validar como analítico um catálogo sem HH');
   await page.getByRole('region',{name:'Etapas SINAPI pendentes de horas-homem'})
-    .getByText(/Aguardando fonte analítica/).waitFor();
+    .getByRole('button',{name:/Buscar HH do código 990001 no Supabase/}).waitFor();
   console.log('PASS Chuveiro: 22 un do orçamento vira etapa pendente com código pesquisado online');
 
   // Independente do clique no serviço, a busca textual permanece acessível.
