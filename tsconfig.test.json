@@ -40,7 +40,8 @@
     "src/utils/sinapi.ts",
     "src/utils/csvExport.ts",
     "src/utils/legacyFixtures.ts",
-    "src/utils/quoteDocument.ts"
+    "src/utils/quoteDocument.ts",
+    "src/utils/quotePdfFile.ts"
   ],
   "include": [],
   "exclude": [
