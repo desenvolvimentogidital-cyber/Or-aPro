@@ -140,6 +140,9 @@ try{
  await page.waitForTimeout(700);
  assert.ok(queries.some(q=>q.includes('chuveiro'))&&queries.some(q=>q.includes('monof'))&&queries.some(q=>q.includes('100860')),
    'Consultas independentes devem chegar ao banco: '+JSON.stringify(queries));
+ // Obra hidráulica já executada: preservar HH históricas, mas não exigir
+ // encanador na equipe ainda necessária.
+ store.payload.schedules[0].tasks[0].progress=[{id:'hidraulica-realizada',date:'2026-10-10',quantity:22,recordedAt:now,note:'Hidráulica concluída'}];
  // Recuperar tarefa criada antes como "sem HH": mantém id, quantidade e progresso.
  store.payload.schedules[0].tasks.push({
   id:'etapa-pendente-qa',quantity:1,crew:{},quoteItemId:undefined,
@@ -168,6 +171,12 @@ try{
  assert.equal(restored.quantity,1);
  assert.equal(store.payload.schedules[0].tasks[0].quoteItemId,'qa-chuveiro');
  assert.equal(store.payload.schedules[0].tasks[1].quoteItemId,'qa-mono');
+ const remaining=page.getByRole('region',{name:'Mão de obra ainda necessária'});
+ await remaining.getByText(/Serviços totalmente medidos como executados/).waitFor();
+ assert.equal(await remaining.locator('strong').filter({hasText:/ENCANADOR/}).count(),0,
+   'Hidráulica concluída não deve exigir encanador no quadro de HH restantes');
+ assert.equal(store.payload.schedules[0].tasks[0].progress[0].quantity,22,
+   'Medição de hidráulica concluída continua íntegra');
  // Complementar serviço da obra por especialidade sem duplicar o mesmo item financeiro.
  await region.getByRole('button',{name:/Chuveiro/}).click();
  await region.getByRole('button',{name:'Adicionar outra especialidade sem duplicar valor financeiro'}).click();
