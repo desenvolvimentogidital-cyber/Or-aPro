@@ -133,8 +133,25 @@ as $$
     and (
       c.code = trim(p_query)
       or c.code like trim(p_query) || '%'
-      or translate(lower(c.description),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc')
-         like '%' || translate(lower(trim(p_query)),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc') || '%'
+      or c.code = regexp_replace(lower(trim(p_query)), '^sinapi\\s+', '')
+      or (
+        -- Pesquisa palavras independentemente da ordem: "instalação de chuveiro"
+        -- deve encontrar "CHUVEIRO ... FORNECIMENTO E INSTALAÇÃO".
+        exists (
+          select 1 from regexp_split_to_table(
+            translate(lower(trim(p_query)),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc'),
+            '[^a-z0-9]+') as token
+          where length(token)>=4 and token not in ('sinapi','servico','servicos','para','com','sem')
+        )
+        and not exists (
+          select 1 from regexp_split_to_table(
+            translate(lower(trim(p_query)),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc'),
+            '[^a-z0-9]+') as token
+          where length(token)>=4 and token not in ('sinapi','servico','servicos','para','com','sem')
+            and translate(lower(c.description),'áàâãäéèêëíìîïóòôõöúùûüç','aaaaaeeeeiiiiooooouuuuc')
+                not like '%' || token || '%'
+        )
+      )
     )
   order by (c.code = trim(p_query)) desc,
            (c.code like trim(p_query)||'%') desc,
