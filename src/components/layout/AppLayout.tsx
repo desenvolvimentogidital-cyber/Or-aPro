@@ -96,7 +96,7 @@ export const AppLayout: React.FC = () => {
   };
 
   return (
-    <div className="h-[100dvh] min-h-0 overflow-hidden md:h-auto md:min-h-screen md:overflow-visible bg-[#07090d] text-slate-100 flex flex-col items-center justify-start p-0 md:py-6 md:px-4 font-sans select-none antialiased">
+    <div className="h-[100dvh] min-h-0 overflow-hidden md:h-auto md:min-h-screen md:overflow-visible bg-[#07090d] text-slate-100 flex flex-col items-center justify-start p-0 md:py-6 md:px-4 font-sans antialiased">
       {/* Operational status visible in both mobile and desktop. */}
       <div className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} shrink-0 px-3 py-2 flex items-center justify-between gap-2 text-[11px] border-b border-white/10 bg-[#141822] md:rounded-xl md:mb-2`}>
         <span className={syncStatus === 'error' ? 'text-rose-400' : syncStatus === 'saving' ? 'text-amber-300' : 'text-emerald-300'} role="status">
@@ -201,12 +201,13 @@ export const AppLayout: React.FC = () => {
         {/* BOTTOM NAVIGATION BAR (Referência visual 48471.png: Início | Clientes | (+) | Orçamentos | Mais) */}
         <nav
           aria-label="Navegação Principal"
-          className={`w-full bg-[#0e1118]/95 backdrop-blur-md border-t border-white/5 py-2 px-3 items-center justify-around shrink-0 sticky bottom-0 z-30 ${viewMode==='responsive'?'flex lg:hidden':'flex'}`}
+          className={`orcapro-bottom-nav w-full bg-[#0e1118]/95 backdrop-blur-md border-t border-white/10 px-1.5 sm:px-3 items-center justify-between shrink-0 sticky bottom-0 z-30 ${viewMode==='responsive'?'flex lg:hidden':'flex'}`}
         >
           {/* 1. Início */}
           <button
             onClick={() => setActiveView('dashboard')}
-            className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all ${
+            aria-current={activeView === 'dashboard' ? 'page' : undefined}
+            className={`min-w-0 flex-1 flex flex-col items-center gap-1 py-1.5 px-0.5 sm:px-2 rounded-xl transition-all ${
               activeView === 'dashboard'
                 ? 'font-bold'
                 : 'text-slate-500 hover:text-slate-300'
@@ -220,7 +221,8 @@ export const AppLayout: React.FC = () => {
           {/* 2. Clientes */}
           <button
             onClick={() => setActiveView('clientes')}
-            className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all ${
+            aria-current={activeView === 'clientes' ? 'page' : undefined}
+            className={`min-w-0 flex-1 flex flex-col items-center gap-1 py-1.5 px-0.5 sm:px-2 rounded-xl transition-all ${
               activeView === 'clientes'
                 ? 'font-bold'
                 : 'text-slate-500 hover:text-slate-300'
@@ -234,7 +236,7 @@ export const AppLayout: React.FC = () => {
           {/* 3. (+) Novo Orçamento Button (Floating prominent round button with glow and gradient) */}
           <button
             onClick={() => setActiveView('novo-orcamento')}
-            className="w-13 h-13 -mt-5 rounded-full flex items-center justify-center text-white shadow-xl transition-transform active:scale-90 hover:scale-105 ring-4 ring-[#0c0e14]"
+            className="w-11 h-11 sm:w-13 sm:h-13 -mt-4 sm:-mt-5 shrink-0 rounded-full flex items-center justify-center text-white shadow-xl transition-transform active:scale-90 hover:scale-105 ring-4 ring-[#0c0e14]"
             style={{
               background: theme.primaryGradient || 'linear-gradient(135deg, #ffa114 0%, #ff6b00 50%, #ff3b00 100%)',
               boxShadow: `0 8px 24px -2px ${theme.primaryColor}88`
@@ -248,7 +250,8 @@ export const AppLayout: React.FC = () => {
           {/* 4. Orçamentos */}
           <button
             onClick={() => setActiveView('orcamentos')}
-            className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all ${
+            aria-current={activeView === 'orcamentos' ? 'page' : undefined}
+            className={`min-w-0 flex-1 flex flex-col items-center gap-1 py-1.5 px-0.5 sm:px-2 rounded-xl transition-all ${
               activeView === 'orcamentos'
                 ? 'font-bold'
                 : 'text-slate-500 hover:text-slate-300'
@@ -256,7 +259,7 @@ export const AppLayout: React.FC = () => {
             style={activeView === 'orcamentos' ? { color: theme.primaryColor } : {}}
           >
             <FileText className="w-5 h-5 stroke-[2.2]" />
-            <span className="text-[10px] tracking-tight">Orçamentos</span>
+            <span className="text-[9px] tracking-tight sm:text-[10px]">Orçamentos</span>
           </button>
 
           {/* Acesso rápido ao cronograma no aplicativo mobile, sem retirar módulos existentes. */}
@@ -264,18 +267,18 @@ export const AppLayout: React.FC = () => {
             type="button"
             onClick={() => setActiveView('cronograma')}
             aria-current={activeView === 'cronograma' ? 'page' : undefined}
-            className={`flex flex-col items-center gap-1 py-1 px-1 rounded-xl transition-all ${activeView === 'cronograma' ? 'font-bold' : 'text-slate-500 hover:text-slate-300'}`}
+            className={`min-w-0 flex-1 flex flex-col items-center gap-1 py-1.5 px-0.5 rounded-xl transition-all ${activeView === 'cronograma' ? 'font-bold' : 'text-slate-500 hover:text-slate-300'}`}
             style={activeView === 'cronograma' ? { color: theme.primaryColor } : {}}
             title="Abrir cronograma de obras"
           >
             <CalendarDays className="w-5 h-5 stroke-[2.2]" />
-            <span className="text-[10px] tracking-tight">Cronograma</span>
+            <span className="text-[9px] tracking-tight sm:text-[10px]">Cronograma</span>
           </button>
 
           {/* 5. Mais / Menu */}
           <button
             onClick={() => setIsMenuOpen(true)}
-            className={`flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl transition-all ${
+            className={`min-w-0 flex-1 flex flex-col items-center gap-1 py-1.5 px-0.5 sm:px-2 rounded-xl transition-all ${
               isMenuOpen
                 ? 'font-bold'
                 : 'text-slate-500 hover:text-slate-300'
