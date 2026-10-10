@@ -491,6 +491,10 @@ export const ScheduleView:React.FC=()=>{
           <button type="button" onClick={add} className="min-h-11 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white">Criar cronograma</button>
         </div>}
       </div>
+      <p className="text-xs text-slate-300">{savedLibraryCount!==null
+        ? `Biblioteca SINAPI recuperada: ${savedLibraryCount.toLocaleString('pt-BR')} composições persistidas no Supabase.`
+        : 'Verificando biblioteca SINAPI persistida no Supabase…'}</p>
+      {libraryStatus==='error'&&<p role="alert" className="text-xs text-rose-300">A busca SINAPI não pôde consultar sua base: {libraryError}</p>}
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <div className="min-w-0 space-y-2">
           <label className="block text-xs font-semibold text-slate-200">1. Serviço do catálogo (opcional)
@@ -516,8 +520,10 @@ export const ScheduleView:React.FC=()=>{
           <div className="space-y-2" aria-live="polite">
             {knownCompositions.length===0
               ?<div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
-                <p><strong>Campo pronto para digitar.</strong> Ainda não existe uma base analítica carregada nesta conta. Para resultados sem planilha, a consulta online de terceiros é exibida logo abaixo.</p>
-                <p>Para calcular HH e prazos reais, é preciso ter a composição analítica com coeficientes. A consulta online textual identifica código, descrição e unidade; por si só não permite calcular equipe.</p>
+                <p><strong>Busca SINAPI no Supabase.</strong> {savedLibraryCount && savedLibraryCount>0
+                  ? `Há ${savedLibraryCount.toLocaleString('pt-BR')} composições analíticas persistidas. Digite um nome ou código para visualizar horas-homem verificáveis.`
+                  : libraryStatus==='loading'?'Pesquisando a biblioteca SINAPI salva…':libraryStatus==='error'?'A biblioteca SINAPI não respondeu. Verifique a conexão e tente novamente.':'Aguarde a verificação da biblioteca ou importe o Analítico quando necessário.'}</p>
+                <p>A biblioteca própria permite calcular HH quando você escolhe uma composição analítica compatível. A pesquisa de terceiros é uma alternativa apenas textual, sem coeficientes.</p>
                 <button type="button" onClick={()=>{setShowImport(true);fileRef.current?.click();}}
                   className="min-h-11 w-full rounded-xl border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-center font-bold text-orange-100">
                   <Upload size={15} className="mr-1 inline"/> Carregar composição SINAPI do arquivo
@@ -623,6 +629,7 @@ export const ScheduleView:React.FC=()=>{
     {attached && current && <section aria-label="Do orçamento para o cronograma" className={`${tile} space-y-3 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
+        <p className="mt-2 text-xs font-medium text-emerald-200">Orçamento vinculado: {attached.number} · {attached.items.length} item(ns). Abra Configurar, escolha a composição SINAPI com a mesma unidade e confirme sua equipe e as HH.</p>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
       {!knownCompositions.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">{savedLibraryCount
