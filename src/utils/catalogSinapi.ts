@@ -1,7 +1,7 @@
 import type { CatalogItem, QuoteItem } from '../types/index';
 import type { SinapiComposition } from '../types/schedule';
-import { sameServiceUnit } from './quoteSchedule';
-import { sinapiUFs, validCompetence } from './sinapiRegional';
+import { sameServiceUnit } from './quoteSchedule.js';
+import { sinapiUFs, validCompetence } from './sinapiRegional.js';
 
 /** Associações persistentes contêm a composição analítica real, NUNCA custos resumidos ou HH inferidas do nome. */
 export function usableSinapiComposition(value: unknown): value is SinapiComposition {
