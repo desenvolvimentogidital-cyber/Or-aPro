@@ -127,6 +127,20 @@ try{
  assert.equal(store.payload.schedules[0].tasks.length,2);
  assert.equal(store.payload.schedules[0].tasks[1].quantity,4);
  assert.equal(store.payload.catalog[0].sinapiComposition?.labor?.length,2);
+ // Busca permanece acessível mesmo que ainda não exista cronograma.
+ store.payload.schedules=[];
+ store.revision+=1;
+ await page.reload({waitUntil:'domcontentloaded'});
+ await page.getByRole('navigation',{name:'Navegação Principal'})
+   .getByRole('button',{name:'Cronograma'}).click();
+ const noPlan=page.getByRole('region',{name:'Serviços cadastrados e SINAPI'});
+ await noPlan.waitFor();
+ assert.equal(await noPlan.getByLabel('Buscar composição SINAPI para o serviço').isEnabled(),true);
+ await noPlan.getByLabel('Buscar composição SINAPI para o serviço').fill('100001');
+ await noPlan.getByRole('group',{name:'Escolher composição SINAPI'})
+   .getByRole('button',{name:/SINAPI 100001/}).waitFor({state:'visible'});
+ await noPlan.getByRole('button',{name:'Criar cronograma'}).click();
+ await page.getByRole('heading',{name:'Cronograma de execução'}).waitFor();
  assert.deepEqual(pageErrors,[]);
- console.log('PASS Android após login: reutiliza SINAPI salvo sem importar a planilha novamente');
+ console.log('PASS Android: busca por código com ou sem serviço selecionado, inclusive sem cronograma');
 }finally{await browser.close();}
