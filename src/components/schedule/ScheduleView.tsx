@@ -384,7 +384,7 @@ export const ScheduleView:React.FC=()=>{
     <section aria-label="Serviços cadastrados e SINAPI" className={`${tile} scroll-mt-4 space-y-4 p-4`}>
       <div>
         <h2 className="flex items-center gap-2 text-sm font-bold text-white"><Wrench size={18} className="text-orange-400"/> Meus serviços → SINAPI</h2>
-        <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise uma composição SINAPI pelo nome ou código, mesmo sem escolher um serviço antes. Selecione o serviço salvo apenas se quiser associá-lo à composição. A pesquisa consulta somente composições analíticas já carregadas ou vinculadas neste OrçaPro.</p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-300">Pesquise por nome ou código. O OrçaPro consulta composições analíticas salvas e também um catálogo online de terceiros, identificado separadamente. Você escolhe o serviço correto; horas-homem não são inventadas.</p>
         {!current&&<div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
           <p className="text-xs text-amber-100">Você pode pesquisar agora. Para adicionar o resultado à obra, crie primeiro um cronograma.</p>
           <button type="button" onClick={add} className="min-h-11 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white">Criar cronograma</button>
@@ -397,7 +397,7 @@ export const ScheduleView:React.FC=()=>{
           </label>
           <div className="max-h-64 space-y-1.5 overflow-y-auto" role="group" aria-label="Selecionar serviço do catálogo">
             {catalogServices.map(item=><button key={item.id} type="button" aria-pressed={catalogSelectedId===item.id}
-              onClick={()=>{setCatalogSelectedId(item.id);setCatalogSinapiQuery('');setCatalogChoice('');setCatalogQuantity('');setCatalogTargetDays('');setCatalogNotice('');setError('');}}
+              onClick={()=>{setCatalogSelectedId(item.id);setCatalogSinapiQuery('');setCatalogChoice('');setSelectedOnline(null);setCatalogQuoteItemId('');setCatalogQuantity('');setCatalogTargetDays('');setCatalogNotice('');setError('');}}
               className={`w-full rounded-xl border p-3 text-left transition ${catalogSelectedId===item.id?'border-orange-500/60 bg-orange-500/10':'border-white/10 bg-[#0b0e15] hover:border-orange-500/30'}`}>
               <strong className="block text-xs text-slate-100">{item.name}</strong>
               <span className="mt-1 block text-[11px] text-slate-400">Unidade cadastrada: {item.unit} {usableSinapiComposition(item.sinapiComposition)?` · ✓ SINAPI ${item.sinapiComposition.code} salvo`:''}</span>
@@ -409,14 +409,14 @@ export const ScheduleView:React.FC=()=>{
           <label className="block text-xs font-semibold text-slate-200">2. Buscar composição SINAPI por nome ou código
             <input className={`${control} mt-1 min-h-12`} type="search" autoComplete="off" enterKeyHint="search"
               aria-label="Buscar composição SINAPI para o serviço" value={catalogSinapiQuery}
-              onChange={e=>{setCatalogSinapiQuery(e.target.value);setCatalogChoice('');}}
+              onChange={e=>{setCatalogSinapiQuery(e.target.value);setCatalogChoice('');setSelectedOnline(null);}}
               placeholder="Digite tomada, pintura ou o código (ex.: 91996)"/>
           </label>
           <div className="space-y-2" aria-live="polite">
             {knownCompositions.length===0
               ?<div className="space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
-                <p><strong>Campo pronto para digitar.</strong> Ainda não existe uma base analítica carregada nesta conta. A pesquisa não consulta automaticamente toda a base SINAPI pela internet.</p>
-                <p>Para buscar composições e calcular HH reais, importe o arquivo analítico SINAPI em XLSX/CSV/TSV no quadro acima. A busca será liberada assim que a importação identificar as composições.</p>
+                <p><strong>Campo pronto para digitar.</strong> Ainda não existe uma base analítica carregada nesta conta. Para resultados sem planilha, a consulta online de terceiros é exibida logo abaixo.</p>
+                <p>Para calcular HH e prazos reais, é preciso ter a composição analítica com coeficientes. A consulta online textual identifica código, descrição e unidade; por si só não permite calcular equipe.</p>
                 <button type="button" onClick={()=>{setShowImport(true);fileRef.current?.click();}}
                   className="min-h-11 w-full rounded-xl border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-center font-bold text-orange-100">
                   <Upload size={15} className="mr-1 inline"/> Carregar composição SINAPI do arquivo
@@ -455,6 +455,37 @@ export const ScheduleView:React.FC=()=>{
           </div>
         </div>
       </div>
+      <section role="region" aria-label="Resultados da consulta online SINAPI" className="space-y-2 rounded-xl border border-sky-500/20 bg-[#101c2c] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-xs font-bold text-sky-200">Consulta online de composições SINAPI</h3>
+          <span className="text-[10px] text-slate-400">SINPRES — serviço independente da CAIXA/IBGE</span>
+        </div>
+        <p className="text-[11px] leading-relaxed text-slate-300">Digite uma descrição ou código no campo acima. A consulta externa mostra código, descrição e unidade; <strong>não apresenta coeficientes HH verificados</strong>. Caso escolha uma dessas composições, a etapa ficará pendente de dimensionamento.</p>
+        {onlineStatus==='idle'&&<p className="text-xs text-slate-400">Digite um nome ou código para consultar o catálogo online.</p>}
+        {onlineStatus==='loading'&&<p role="status" className="text-xs text-sky-200">Buscando “{onlineTerm}” no catálogo online…</p>}
+        {onlineStatus==='error'&&<p role="alert" className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">Consulta online indisponível: {onlineError} Você pode continuar com uma planilha importada.</p>}
+        {onlineStatus==='ready'&&<p role="status" className="text-xs text-slate-300">{filteredOnlineResults.length} composição(ões) online para “{onlineTerm}” (além das que já estão carregadas).</p>}
+        {onlineStatus==='ready'&&filteredOnlineResults.length===0&&<p className="text-xs text-slate-400">Não há novas composições no catálogo externo para essa busca. Experimente uma palavra ou o código exato.</p>}
+        {onlineStatus==='ready'&&filteredOnlineResults.length>0&&<div role="group" aria-label="Selecionar composição SINAPI online" className="max-h-64 space-y-2 overflow-y-auto">
+          {filteredOnlineResults.map(result=><button type="button" key={result.code+'|'+result.unit}
+            aria-pressed={selectedOnline?.code===result.code}
+            onClick={()=>{setSelectedOnline(result);setCatalogChoice('');setCatalogNotice('');setError('');}}
+            className={`w-full rounded-lg border p-3 text-left text-xs ${selectedOnline?.code===result.code?'border-sky-400 bg-sky-500/10':'border-white/10 bg-[#0b141e] hover:border-sky-500/40'}`}>
+            <strong className="block text-sky-200">SINAPI {result.code} · {result.unit} <span className="font-normal text-amber-200">· HH pendentes</span></strong>
+            <span className="mt-1 block leading-relaxed text-slate-200">{result.description}</span>
+          </button>)}
+        </div>}
+        {selectedOnline&&<div className="space-y-3 rounded-xl border border-sky-500/30 p-3">
+          <strong className="block text-xs text-white">{selectedOnline.code} — {selectedOnline.description}</strong>
+          <p className="text-xs leading-relaxed text-amber-200">Essa consulta não contém o relatório analítico de mão de obra. A etapa será criada SEM horas-homem, sem equipe estimada e sem prazo previsto até receber coeficientes confirmados.</p>
+          <label className="block text-xs text-slate-200">Quantidade em {selectedOnline.unit}
+            <input className={`${control} mt-1`} type="text" inputMode="decimal" aria-label="Quantidade SINAPI online" value={catalogQuantity} onChange={e=>setCatalogQuantity(e.target.value)} placeholder="Quantidade real"/>
+          </label>
+          {catalogQuoteItemId&&<p className="text-[11px] text-slate-300">Vínculo ao orçamento: {attached?.items.find(x=>x.id===catalogQuoteItemId)?.name||'Não encontrado'}. Só será registrado se unidade e quantidade forem exatamente iguais.</p>}
+          {!current&&<p className="text-xs text-amber-200">Crie um cronograma antes de registrar essa composição na obra.</p>}
+          <button type="button" disabled={!current} onClick={appendOnlinePending} className="min-h-11 w-full rounded-xl bg-sky-700 p-3 text-xs font-bold text-white hover:bg-sky-600 disabled:opacity-40">Registrar composição como etapa pendente de HH</button>
+        </div>}
+      </section>
       {selectedCatalogComposition&&<div className="space-y-3 rounded-xl border border-orange-500/25 bg-orange-500/5 p-3">
         <div>
           <h3 className="text-xs font-bold text-orange-200">3. Confirmar composição e quantidade</h3>
