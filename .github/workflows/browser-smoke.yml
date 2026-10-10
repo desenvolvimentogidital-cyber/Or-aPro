@@ -55,6 +55,8 @@ jobs:
         run: node test/e2e/catalog-sinapi.mjs
       - name: Consulta online SINAPI de Chuveiro e Padrao monofasico (mock seguro)
         run: node test/e2e/sinapi-online.mjs
+      - name: Biblioteca analitica SINAPI salva, busca por Chuveiro e HH do orcamento
+        run: node test/e2e/sinapi-library.mjs
       - name: Datas reais do Gantt e visualizacao de PDF
         run: node test/e2e/schedule-ui.mjs
       - name: Integridade de cliente, financeiro, backup e conflitos (REST isolado)
