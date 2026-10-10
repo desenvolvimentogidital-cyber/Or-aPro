@@ -302,6 +302,25 @@ export const ScheduleView:React.FC=()=>{
     const task:ScheduleTask={id:newId('etapa'),composition,quantity:q,crew:{},quoteItemId:linkedItem?.id,dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]};
     change({tasks:[...current.tasks,task]});setError('');setQuantity('');setSelectedQuoteItem('');
   };
+  /** Atualiza quantidades com consentimento, preservando IDs, composição,
+   * equipe, predecessoras e medições existentes; nunca reduz abaixo do medido. */
+  const syncLinkedQuoteQuantities=()=>{
+    if(!current||!attached)return;
+    let updated=0,blocked=0;
+    const tasks=current.tasks.map(task=>{
+      if(!task.quoteItemId)return task;
+      const item=attached.items.find(q=>q.id===task.quoteItemId);
+      if(!item)return task;
+      if(!sameServiceUnit(item.unit,task.composition.unit) ||
+        !Number.isFinite(item.quantity) || item.quantity<=0 ||
+        item.quantity+0.000001<measuredQuantity(task)){blocked++;return task;}
+      if(Math.abs(task.quantity-item.quantity)<=0.000001)return task;
+      updated++;
+      return {...task,quantity:item.quantity};
+    });
+    if(updated)change({tasks});
+    setImportInfo(`Sincronização do orçamento: ${updated} quantidade(s) atualizada(s), ${blocked} bloqueada(s) por unidade incompatível, valor inválido ou avanço medido. As composições, equipes e vínculos foram preservados. Revise os prazos recalculados.`);
+  };
   const appendFromQuote=(quoteItemId:string)=>{
     if(!current || !attached){setError('Vincule um orçamento para importar os serviços.');return;}
     const item=attached.items.find(i=>i.id===quoteItemId);
@@ -638,6 +657,8 @@ export const ScheduleView:React.FC=()=>{
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
         <p className="mt-2 text-xs font-medium text-emerald-200">Orçamento vinculado: {attached.number} · {attached.items.length} item(ns). Abra Configurar, escolha a composição SINAPI com a mesma unidade e confirme sua equipe e as HH.</p>
+        <button type="button" onClick={syncLinkedQuoteQuantities} className="mt-2 min-h-10 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-200">Atualizar quantidades das etapas vinculadas conforme orçamento</button>
+        <p className="mt-1 text-[10px] text-slate-400">Atualização manual e segura: não remove etapas, não troca composição, não altera medições nem preços. Recalcula HH e prazos com a equipe atual.</p>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
       {!knownCompositions.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">{savedLibraryCount
