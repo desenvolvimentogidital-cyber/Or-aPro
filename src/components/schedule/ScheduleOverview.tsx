@@ -125,7 +125,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
          <h3 className={title}><TrendingUp size={16} className="text-orange-400"/> Curva S — evolução física</h3>
          {labels.length?<div className="p-3">
            <div className="mb-1 flex justify-end gap-3 text-[10px]"><span className="text-orange-400">━ Planejado</span><span className="text-amber-200">{model.hasMeasurements?'┄ Realizado':'Realizado: sem medições'}</span></div>
-           <svg viewBox="0 0 640 212" role="img" aria-label="Curva S com percentuais acumulados por mês" className="h-auto w-full">
+           <div className="orcapro-horizontal-region overflow-x-auto" role="region" aria-label="Visualização horizontal da Curva S" tabIndex={0}>
+          <svg viewBox="0 0 640 212" role="img" aria-label="Curva S com percentuais acumulados por mês" className="h-auto min-w-[580px] w-full">
              {[0,25,50,75,100].map(p=><g key={p}><line x1="38" x2="620" y1={171-p*1.44} y2={171-p*1.44} stroke="#214058" strokeWidth="1"/><text x="29" y={175-p*1.44} fontSize="12" fill="#a4bad0" textAnchor="end">{p}%</text></g>)}
              {labels.map((m,i)=><g key={m.key}><line x1={40+(i+.5)*570/labels.length} x2={40+(i+.5)*570/labels.length} y1="27" y2="171" stroke="#1d384d" strokeWidth="1"/><text x={40+(i+.5)*570/labels.length} y="194" fill="#a4bad0" textAnchor="middle" fontSize={labels.length>12?8:11}>{m.key.slice(5)}/{m.key.slice(2,4)}</text></g>)}
              {planned.path&&<path d={planned.path} stroke="#ff8819" strokeWidth="3.5" fill="none" strokeLinejoin="round"/>}
@@ -133,7 +134,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
              {planned.points.map((p,i)=><circle key={'p'+i} cx={p.x} cy={p.y} r="3.5" fill="#ff8819"/>)}
              {model.hasMeasurements&&actual.points.map((p,i)=><circle key={'a'+i} cx={p.x} cy={p.y} r="3" fill="#ffd166"/>)}
            </svg>
-           <p className="text-[10px] leading-relaxed text-slate-400">Planejado por HH distribuídas nos dias úteis da etapa; realizado por medições datadas. Não equivale à curva de custos.</p>
+           </div>
+           <p className="mt-2 text-[10px] leading-relaxed text-slate-400">Deslize o gráfico horizontalmente para ler os meses. Planejado por HH distribuídas nos dias úteis da etapa; realizado por medições datadas. Não equivale à curva de custos.</p>
          </div>:<div className="p-4 text-xs text-slate-400">A curva será exibida quando todas as datas puderem ser calculadas.</div>}
        </div>
      </div>
