@@ -81,3 +81,43 @@ export async function searchSavedSinapi(session:Session,term:string,signal?:Abor
   const rows=await response.json() as SinapiComposition[];
   return Array.isArray(rows)?rows.filter(isAnalyticalSinapi).slice(0,60):[];
 }
+
+/** Busca paginada por toda a base SINAPI persistida, sem transferir os 9.136
+ * serviços ao navegador e sem duplicar composições no workspace do usuário.
+ * A RPC usa RLS e somente o token autenticado fornecido pela sessão.
+ */
+export interface SinapiBrowseEntry { composition:SinapiComposition; category:string }
+export interface SinapiBrowsePage { entries:SinapiBrowseEntry[]; total:number }
+
+export async function browseSinapiLibrary(
+  session:Session, query:string, category:string='todas', offset=0,
+  limit=30, signal?:AbortSignal
+):Promise<SinapiBrowsePage> {
+  if(!Number.isSafeInteger(offset)||offset<0||offset>20000||
+     !Number.isSafeInteger(limit)||limit<1||limit>60)
+    throw Error('Paginação SINAPI inválida.');
+  const permitted=['todas','eletrica','hidraulica','mista','pintura',
+    'revestimento','alvenaria','civil','outras'];
+  if(!permitted.includes(category))throw Error('Especialidade SINAPI inválida.');
+  type RecordRow=SinapiComposition&{category:string;total_count:number};
+  const response=await request(session,'/rest/v1/rpc/orcapro_browse_sinapi',{
+    method:'POST',signal,
+    body:JSON.stringify({
+      p_query:query.trim().slice(0,100),p_category:category,
+      p_offset:offset,p_limit:limit
+    })
+  });
+  const json=await response.json() as RecordRow[];
+  if(!Array.isArray(json))throw Error('Resposta inesperada da biblioteca SINAPI.');
+  const entries=json.filter(isAnalyticalSinapi)
+    .map(row=>({composition:{
+      code:row.code,description:row.description,unit:row.unit,
+      labor:row.labor,sourceFile:row.sourceFile,sourceSheet:row.sourceSheet,
+      reference:row.reference
+    },category:row.category}));
+  return {
+    entries,
+    total:Number.isSafeInteger(json[0]?.total_count) && json[0].total_count>=0
+      ? json[0].total_count:0
+  };
+}

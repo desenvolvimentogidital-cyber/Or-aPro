@@ -35,6 +35,8 @@ jobs:
           exit 1
       - name: Smoke UI mobile e desktop
         run: node test/e2e/smoke.mjs
+      - name: Todos os servicos SINAPI no cadastro e orcamento (Android isolado)
+        run: node test/e2e/sinapi-browse-all-services.mjs
       - name: Formacao de preco — dias e horas editaveis e salvos no Android
         run: node test/e2e/pricing-workload.mjs
       - name: Edicao numerica Android em catalogo, custos e cronograma

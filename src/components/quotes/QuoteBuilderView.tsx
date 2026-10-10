@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import {SinapiReferencePicker} from '../catalog/SinapiReferencePicker';
+import type {SinapiComposition} from '../../types/schedule';
+import {sinapiUFs,withSinapiProvenance,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import {
@@ -31,7 +34,7 @@ import {laborDemandForQuantity, sameServiceUnit} from '../../utils/quoteSchedule
 import {categoryLabel,matchesSinapiCategory,sinapiCategoryOptions,type SinapiCategoryFilter} from '../../utils/sinapiCategories';
 
 export const QuoteBuilderView: React.FC = () => {
-  const { clients, catalog, addQuote, updateQuote, editingQuote, setEditingQuote, draftClientId, setDraftClientId, getNextQuoteNumber, setActiveView, setActiveQuoteForPreview } = useApp();
+  const { clients, catalog, company, addCatalogItem, addQuote, updateQuote, editingQuote, setEditingQuote, draftClientId, setDraftClientId, getNextQuoteNumber, setActiveView, setActiveQuoteForPreview } = useApp();
   const { theme } = useTheme();
 
   // Selected client
@@ -47,6 +50,13 @@ export const QuoteBuilderView: React.FC = () => {
   const [itemPickerTab, setItemPickerTab] = useState<'todos' | 'materiais' | 'servicos' | 'mao_de_obra'>('todos');
   const [itemPickerSpecialty,setItemPickerSpecialty]=useState<SinapiCategoryFilter>('todas');
   const [itemPickerSearch, setItemPickerSearch] = useState('');
+  const [sinapiBrowseOpen,setSinapiBrowseOpen]=useState(false);
+  const [pickedSinapi,setPickedSinapi]=useState<SinapiComposition|null>(null);
+  const [sinapiPrice,setSinapiPrice]=useState(0);
+  const [sinapiUF,setSinapiUF]=useState<SinapiUF|''>(
+    sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:'');
+  const [sinapiRegime,setSinapiRegime]=useState<SinapiRegime|''>('');
+  const [sinapiAddError,setSinapiAddError]=useState('');
 
   // Additional costs & adjustments
   const [travelCost, setTravelCost] = useState<number>(editingQuote?.travelCost ?? 0);
@@ -123,6 +133,48 @@ export const QuoteBuilderView: React.FC = () => {
         }
       ];
     });
+  };
+
+  const prepareSinapiForQuote=(c:SinapiComposition)=>{
+    setPickedSinapi(c);setSinapiBrowseOpen(false);setSinapiAddError('');
+    const previously=catalog.find(item=>item.type==='servico' &&
+      item.sinapiComposition?.code===c.code && item.sinapiComposition?.reference===c.reference);
+    setSinapiPrice(previously?.price||0);
+    setSinapiUF(previously?.sinapiComposition?.uf ||
+      (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
+    setSinapiRegime(previously?.sinapiComposition?.regime||'');
+  };
+  const addSinapiToQuote=()=>{
+    if(!pickedSinapi)return;
+    if(!Number.isFinite(sinapiPrice)||sinapiPrice<=0){
+      setSinapiAddError('Informe o preço comercial de venda do serviço. A composição SINAPI informa HH, não preço.');
+      return;
+    }
+    if(!sinapiUF||!sinapiRegime){
+      setSinapiAddError('Informe UF e regime de encargos da obra antes de adicionar.');return;
+    }
+    try{
+      const composition=withSinapiProvenance(pickedSinapi,{
+        reference:pickedSinapi.reference||'',uf:sinapiUF,regime:sinapiRegime
+      });
+      const known=catalog.find(item=>item.type==='servico' &&
+        item.sinapiComposition?.code===composition.code &&
+        item.sinapiComposition?.reference===composition.reference &&
+        item.sinapiComposition?.uf===composition.uf &&
+        item.sinapiComposition?.regime===composition.regime &&
+        item.unit===composition.unit);
+      const catalogItem:CatalogItem=known||{
+        id:newId('cat'),type:'servico',name:`SINAPI ${composition.code} · ${composition.description}`,
+        category:categoryLabel(composition),price:sinapiPrice,unit:composition.unit,
+        description:`Composição analítica ${composition.reference}; HH oficiais do arquivo ${composition.sourceFile}. Preço comercial declarado pelo usuário.`,
+        sinapiComposition:composition
+      };
+      if(!known)addCatalogItem(catalogItem);
+      handleAddItemFromCatalog(catalogItem);
+      setPickedSinapi(null);setSinapiAddError('');
+    }catch(err){
+      setSinapiAddError(err instanceof Error?err.message:'Não foi possível inserir o serviço SINAPI.');
+    }
   };
 
   const handleUpdateItemQty = (id: string, delta: number) => {
@@ -709,6 +761,49 @@ export const QuoteBuilderView: React.FC = () => {
               </select>
             </label>
             {itemPickerSpecialty!=='todas'&&<p className="mb-2 text-[11px] text-amber-200">Somente serviços já vinculados a composições analíticas verificadas aparecem neste filtro. Cadastre e vincule outras especialidades no catálogo/cronograma antes de selecionar.</p>}
+            {(itemPickerTab==='todos'||itemPickerTab==='servicos')&&
+              <div className="mb-3 space-y-2">
+                <button type="button" onClick={()=>setSinapiBrowseOpen(v=>!v)}
+                  className="min-h-11 w-full rounded-xl border border-sky-500/35 bg-sky-500/10 px-3 text-left text-xs font-bold text-sky-200">
+                  {sinapiBrowseOpen?'Ocultar biblioteca SINAPI':'Adicionar serviço da tabela SINAPI (todos os 9.136)'}
+                </button>
+                {sinapiBrowseOpen&&<SinapiReferencePicker onSelect={prepareSinapiForQuote}
+                  title="Selecionar serviço SINAPI para o orçamento"/>}
+                {pickedSinapi&&<div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                  <strong className="block text-xs text-emerald-200">SINAPI {pickedSinapi.code} · {categoryLabel(pickedSinapi)}</strong>
+                  <p className="text-xs text-slate-200">{pickedSinapi.description}</p>
+                  <p className="text-[11px] text-emerald-200">Profissionais: {pickedSinapi.labor.map(l=>`${l.role}: ${l.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH/${pickedSinapi.unit}`).join(' · ')}</p>
+                  <label className="block text-xs text-slate-200">Preço comercial de venda (R$ por {pickedSinapi.unit})
+                    <EditableNumericInput value={sinapiPrice} min={0.01} emptyAsBlank required
+                      onCommit={setSinapiPrice} aria-label="Preço de venda do serviço SINAPI"
+                      className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] px-3 text-white"/>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block text-[11px] text-slate-200">UF da obra
+                      <select aria-label="UF da composição SINAPI no orçamento" value={sinapiUF}
+                        onChange={e=>setSinapiUF(e.target.value as SinapiUF|'')}
+                        className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
+                        <option value="">Selecionar</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+                      </select>
+                    </label>
+                    <label className="block text-[11px] text-slate-200">Encargos
+                      <select aria-label="Encargos da composição SINAPI no orçamento" value={sinapiRegime}
+                        onChange={e=>setSinapiRegime(e.target.value as SinapiRegime|'')}
+                        className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
+                        <option value="">Selecionar</option>
+                        <option value="sem_desoneracao">Sem desoneração</option>
+                        <option value="com_desoneracao">Com desoneração</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-amber-200">Os coeficientes HH vêm da composição oficial; a UF/regime identifica sua obra e não recalcula os preços. Nenhum preço de venda é inferido.</p>
+                  {sinapiAddError&&<p role="alert" className="text-xs text-rose-200">{sinapiAddError}</p>}
+                  <button type="button" onClick={addSinapiToQuote}
+                    className="min-h-11 w-full rounded-lg bg-sky-700 p-2 text-xs font-bold text-white">
+                    Adicionar serviço SINAPI ao orçamento
+                  </button>
+                </div>}
+              </div>}
             {/* Items list with orange "+" icon (Referência visual #6) */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {filteredCatalogItems.map(catalogItem => {
