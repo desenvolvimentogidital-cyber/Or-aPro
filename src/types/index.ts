@@ -102,6 +102,10 @@ export interface MonthlyExpense {
 }
 
 export interface CompanySettings {
+  /** Dias trabalhados por mês para ratear custos fixos (configuração voluntária). */
+  pricingWorkDaysPerMonth?: number;
+  /** Horas por dia; o total do mês é calculado, não duplicado no cadastro. */
+  pricingHoursPerDay?: number;
   name: string;
   tradeName: string; // Nome fantasia
   document: string; // CNPJ / CPF
