@@ -18,6 +18,7 @@ import { MonthlyExpense } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import { pricingEstimate, newId } from '../../utils/quoteMath';
 import { calculateBdi, type BdiRates } from '../../utils/bdi';
+import { EditableNumericInput } from '../common/EditableNumericInput';
 
 export const PricingFormationView: React.FC = () => {
   const { expenses, addExpense, deleteExpense } = useApp();
@@ -159,12 +160,11 @@ export const PricingFormationView: React.FC = () => {
                 />
               </div>
               <div className="col-span-4">
-                <input
-                  type="number"
-                  step="0.01"
+                <EditableNumericInput
+                  min={0.01} required
                   placeholder="R$ 0,00"
-                  value={newExpAmount || ''}
-                  onChange={e => setNewExpAmount(parseFloat(e.target.value) || 0)}
+                  value={newExpAmount} emptyAsBlank
+                  onCommit={setNewExpAmount}
                   className="w-full bg-[#1b202c] text-xs text-white px-3 py-2 rounded-xl border border-white/10 focus:outline-none font-mono"
                   required
                 />
@@ -223,40 +223,40 @@ export const PricingFormationView: React.FC = () => {
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="text-slate-400 block mb-1">Custo de Materiais (R$)</label>
-                <input
-                  type="number"
-                  value={jobMaterialCost}
-                  onChange={e => setJobMaterialCost(parseFloat(e.target.value) || 0)}
+                <EditableNumericInput
+                  min={0}
+                  value={jobMaterialCost} emptyAsBlank
+                  onCommit={setJobMaterialCost}
                   className="w-full bg-[#1b202c] text-white px-3 py-2 rounded-xl border border-white/10 font-mono"
                 />
               </div>
 
               <div>
                 <label className="text-slate-400 block mb-1">Horas de Trabalho Estimadas</label>
-                <input
-                  type="number"
-                  value={jobHours}
-                  onChange={e => setJobHours(parseFloat(e.target.value) || 0)}
+                <EditableNumericInput
+                  min={0}
+                  value={jobHours} emptyAsBlank
+                  onCommit={setJobHours}
                   className="w-full bg-[#1b202c] text-white px-3 py-2 rounded-xl border border-white/10 font-mono"
                 />
               </div>
 
               <div>
                 <label className="text-slate-400 block mb-1">Margem de Lucro Desejada (%)</label>
-                <input
-                  type="number"
-                  value={desiredProfitMargin}
-                  onChange={e => setDesiredProfitMargin(parseFloat(e.target.value) || 0)}
+                <EditableNumericInput
+                  min={0} max={100}
+                  value={desiredProfitMargin} emptyAsBlank
+                  onCommit={setDesiredProfitMargin}
                   className="w-full bg-[#1b202c] text-white px-3 py-2 rounded-xl border border-white/10 font-mono"
                 />
               </div>
 
               <div>
                 <label className="text-slate-400 block mb-1">Imposto Tributário (%)</label>
-                <input
-                  type="number"
-                  value={taxRate}
-                  onChange={e => setTaxRate(parseFloat(e.target.value) || 0)}
+                <EditableNumericInput
+                  min={0} max={100}
+                  value={taxRate} emptyAsBlank
+                  onCommit={setTaxRate}
                   className="w-full bg-[#1b202c] text-white px-3 py-2 rounded-xl border border-white/10 font-mono"
                 />
               </div>
