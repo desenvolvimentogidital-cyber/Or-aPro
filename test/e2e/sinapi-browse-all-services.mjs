@@ -105,7 +105,7 @@ try{
  await page.getByText(/SINAPI 100860.*HH referenciais/).waitFor({timeout:13000});
  await page.waitForTimeout(1200);
  assert.equal(fixture.payload.catalog.length,2,'Composição escolhida no orçamento também é salva no catálogo');
- assert.equal(fixture.payload.catalog[1].sinapiComposition.code,'100860');
+ assert.ok(fixture.payload.catalog.some(entry=>entry.sinapiComposition?.code==='100860'),'Novo serviço SINAPI deve ser persistido no catálogo (independentemente da ordenação)');
  assert.deepEqual(errors,[]);
  console.log('PASS Android: todos 9.136 buscáveis/paginados, 980 elétricos, cadastro com preço declarado e HH, inclusão no orçamento sem preço inventado');
 }finally{await browser.close();}
