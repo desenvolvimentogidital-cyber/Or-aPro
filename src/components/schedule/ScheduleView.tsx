@@ -15,6 +15,7 @@ import type { SinapiComposition, WorkSchedule, ScheduleTask } from '../../types/
 import { newId } from '../../utils/quoteMath';
 import { sameServiceUnit, simulateCrewForQuote } from '../../utils/quoteSchedule';
 import { compositionIdentity, findCatalogSinapiCandidates, savedSinapiForQuote, usableSinapiComposition } from '../../utils/catalogSinapi';
+import {searchSinapiOnline,onlineSinapiPendingComposition,type SinapiOnlineResult} from '../../services/sinapiOnline';
 
 const control='w-full min-w-0 rounded-xl border border-white/10 bg-[#0b0e15] px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-orange-500/70';
 const tile='rounded-2xl border border-white/10 bg-[#141822]';
@@ -68,6 +69,11 @@ export const ScheduleView:React.FC=()=>{
   const [catalogQuantity,setCatalogQuantity]=useState('');
   const [catalogTargetDays,setCatalogTargetDays]=useState('');
   const [catalogNotice,setCatalogNotice]=useState('');
+  const [onlineResults,setOnlineResults]=useState<SinapiOnlineResult[]>([]);
+  const [onlineStatus,setOnlineStatus]=useState<'idle'|'loading'|'ready'|'error'>('idle');
+  const [onlineError,setOnlineError]=useState('');
+  const [selectedOnline,setSelectedOnline]=useState<SinapiOnlineResult|null>(null);
+  const [catalogQuoteItemId,setCatalogQuoteItemId]=useState('');
   const [showImport,setShowImport]=useState(true);
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
@@ -107,6 +113,26 @@ export const ScheduleView:React.FC=()=>{
         .replace(/[\u0300-\u036f]/g,'').toLowerCase().includes(query))).slice(0,45);
   },[catalog,catalogServiceQuery]);
   const selectedCatalogService=catalog.find(item=>item.id===catalogSelectedId && item.type==='servico');
+  const onlineTerm=(catalogSinapiQuery.trim()||selectedCatalogService?.name.trim()||'').slice(0,100);
+  useEffect(()=>{
+    if(onlineTerm.length<2){setOnlineResults([]);setOnlineStatus('idle');setOnlineError('');return;}
+    const controller=new AbortController();
+    setOnlineStatus('loading');
+    setOnlineError('');
+    const id=window.setTimeout(()=>{
+      searchSinapiOnline(onlineTerm,controller.signal).then(results=>{
+        if(controller.signal.aborted)return;
+        setOnlineResults(results);
+        setOnlineStatus('ready');
+      }).catch(e=>{
+        if(controller.signal.aborted)return;
+        setOnlineStatus('error');
+        setOnlineResults([]);
+        setOnlineError(e instanceof Error?e.message:'Consulta online indisponível.');
+      });
+    },550);
+    return ()=>{window.clearTimeout(id);controller.abort();};
+  },[onlineTerm]);
   const knownCompositions=useMemo(()=>{
     const items:SinapiComposition[]=[];
     const used=new Set<string>();
@@ -135,6 +161,8 @@ export const ScheduleView:React.FC=()=>{
     return results;
   },[selectedCatalogService,knownCompositions,catalogSinapiQuery]);
   const selectedCatalogComposition=knownCompositions.find(c=>compositionIdentity(c)===catalogChoice);
+  const filteredOnlineResults=onlineResults.filter(row=>
+    !knownCompositions.some(c=>c.code===row.code && sameServiceUnit(c.unit,row.unit)));
   const selectedCatalogQuantity=decimalFromInput(catalogQuantity);
   const catalogSimulation=useMemo(()=>{
     if(!current||!selectedCatalogComposition||!Number.isFinite(selectedCatalogQuantity)||selectedCatalogQuantity<=0)
@@ -275,6 +303,25 @@ export const ScheduleView:React.FC=()=>{
       setCatalogQuantity('');
       setCatalogChoice('');
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível associar o serviço SINAPI.');}
+  };
+  const appendOnlinePending=()=>{
+    if(!current||!selectedOnline){setError('Selecione a composição para registrar a etapa.');return;}
+    const q=decimalFromInput(catalogQuantity);
+    if(!Number.isFinite(q)||q<=0){setError('Informe uma quantidade válida na unidade SINAPI.');return;}
+    if(current.tasks.length>=180){setError('Limite de 180 serviços por cronograma.');return;}
+    const quoteItem=catalogQuoteItemId?attached?.items.find(x=>x.id===catalogQuoteItemId):undefined;
+    if(quoteItem && current.tasks.some(t=>t.quoteItemId===quoteItem.id)){setError('Este item do orçamento já tem etapa vinculada.');return;}
+    const linked=quoteItem && sameServiceUnit(quoteItem.unit,selectedOnline.unit)
+      && Math.abs(quoteItem.quantity-q)<0.000001?quoteItem.id:undefined;
+    const composition=onlineSinapiPendingComposition(selectedOnline);
+    const task:ScheduleTask={
+      id:newId('etapa'),composition,quantity:q,crew:{},quoteItemId:linked,
+      notes:'Catálogo textual SINPRES (não oficial). SEM coeficientes analíticos: equipe e prazo pendentes de confirmação.',
+      dependencies:current.scheduleMode==='dependencias'&&current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]
+    };
+    change({tasks:[...current.tasks,task]});
+    setCatalogNotice(`Composição ${composition.code} registrada como ETAPA PENDENTE, com ${fmt(q)} ${composition.unit}. Código e descrição vieram do catálogo de terceiros. O sistema NÃO calculou horas-homem nem prazo. Importe os coeficientes analíticos para finalizar o planejamento.`);
+    setSelectedOnline(null);setCatalogQuoteItemId('');setCatalogQuantity('');setError('');
   };
   const changeTask=(task:ScheduleTask)=>change({tasks:current!.tasks.map(t=>t.id===task.id?task:t)});
   const recordMeasurement=(task:ScheduleTask)=>{
