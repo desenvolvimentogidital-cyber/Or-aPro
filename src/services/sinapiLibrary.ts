@@ -67,11 +67,10 @@ export async function saveSinapiLibrary(
 
 export async function countSavedSinapi(session:Session):Promise<number>{
   const response=await request(session,
-    '/rest/v1/orcapro_sinapi_compositions?select=code&limit=1',
-    {headers:{Prefer:'count=exact'}});
-  const contentRange=response.headers.get('Content-Range')||'';
-  const count=Number(contentRange.split('/')[1]);
-  return Number.isSafeInteger(count)?count:0;
+    '/rest/v1/rpc/orcapro_sinapi_library_count',
+    {method:'POST',body:'{}'});
+  const count=await response.json() as number;
+  return Number.isSafeInteger(count)&&count>=0?count:0;
 }
 
 export async function searchSavedSinapi(session:Session,term:string,signal?:AbortSignal):
