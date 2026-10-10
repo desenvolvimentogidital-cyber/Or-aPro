@@ -78,7 +78,7 @@ try{
  await page.getByLabel('Encargos para o serviço SINAPI').selectOption('sem_desoneracao');
  assert.equal(await page.getByLabel('UF para o serviço SINAPI').inputValue(),'SP');
  const price=page.getByPlaceholder('0.00');await price.fill('180');await price.press('Tab');
- await page.getByRole('button',{name:'Salvar Item'}).click();
+ await page.getByRole('button',{name:'Adicionar ao Catálogo'}).click();
  await page.waitForTimeout(1200);
  assert.equal(fixture.payload.catalog.length,1);
  const registered=fixture.payload.catalog[0];
