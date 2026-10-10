@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {sameServiceUnit,findQuoteSinapiCandidates,simulateCrewForQuote} from '../.test-dist/utils/quoteSchedule.js';
-import {estimateSchedule} from '../.test-dist/utils/scheduleMath.js';
+import {estimateSchedule,peakCrewDemand} from '../.test-dist/utils/scheduleMath.js';
 import {physicalFinancial} from '../.test-dist/utils/physicalFinancial.js';
 
 const make = (code, description, unit, labor) => ({
@@ -85,4 +85,51 @@ test('equipe sugerida comunica com estimativa e financeiro por ID de item',()=>{
   assert.equal(financial.uncoveredItems,0);
   assert.equal(financial.planned,8000);
   assert.equal(financial.measured,0);
+});
+
+test('mesmo código profissional repetido no Analítico soma coeficientes, não pessoas',()=>{
+  const repeated=make('100860','Chuveiro elétrico','UN',[
+    ['88316','Servente',0.2],['88316','Servente',0.3],
+    ['88267','Encanador',1.1]]);
+  const plan=simulateCrewForQuote(repeated,22,8,1);
+  assert.equal(plan.labor.length,2);
+  assert.equal(plan.crew['88316:Servente'],1);
+  assert.equal(plan.labor.find(l=>l.role==='Servente').coefficient,0.5);
+  assert.equal(plan.totalHH,35.2);
+  const task={id:'chuveiro',composition:repeated,quantity:22,crew:plan.crew};
+  const report=estimateSchedule({startDate:'2026-10-12',hoursPerDay:8,efficiency:1,tasks:[task]});
+  assert.equal(report.entries[0].totalHH,35.2);
+  assert.equal(report.entries[0].labor.length,2);
+  assert.equal(report.entries[0].days,4);
+});
+
+test('dimensiona 22 chuveiros com coeficientes reais da base 09/2026',()=>{
+  const chuveiro=make('100860','CHUVEIRO ELÉTRICO COMUM','UN',[
+    ['88316','SERVENTE',0.4535436],['88267','ENCANADOR',1.1816004]]);
+  const plan=simulateCrewForQuote(chuveiro,22,8,1,2);
+  assert.ok(Math.abs(plan.totalHH-35.973168)<1e-7);
+  assert.deepEqual(plan.crew,{'88316:SERVENTE':1,'88267:ENCANADOR':2});
+  assert.equal(plan.projectedDays,2);
+});
+
+test('pico de profissionais soma frentes paralelas e não soma serviços sequenciais',()=>{
+  const comp=make('999001','Instalação de exemplo','UN',[['101','Eletricista',8]]);
+  const work=(id,quantity,dependencies=[])=>({
+    id,composition:comp,quantity,crew:{'101:Eletricista':1},dependencies
+  });
+  const parallel={startDate:'2026-10-12',hoursPerDay:8,efficiency:1,
+    scheduleMode:'dependencias',tasks:[work('a',1),work('b',2)]};
+  const peakParallel=peakCrewDemand(estimateSchedule(parallel));
+  assert.equal(peakParallel.total,2);
+  assert.equal(peakParallel.roles[0].workers,2);
+  const sequential={...parallel,scheduleMode:'sequencial'};
+  assert.equal(peakCrewDemand(estimateSchedule(sequential)).total,1);
+});
+
+test('sem equipe confirmada não calcula duração nem demanda falsa',()=>{
+  const comp=make('999002','Instalação de teste','UN',[['101','Eletricista',2]]);
+  const report=estimateSchedule({startDate:'2026-10-12',hoursPerDay:8,efficiency:1,
+    tasks:[{id:'e',composition:comp,quantity:10,crew:{}}]});
+  assert.equal(report.pending,1);
+  assert.equal(peakCrewDemand(report).total,0);
 });
