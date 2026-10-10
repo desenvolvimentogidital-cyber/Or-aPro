@@ -307,6 +307,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEditModal(item)}
+                      aria-label={`Editar ${item.name}`}
                       className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
