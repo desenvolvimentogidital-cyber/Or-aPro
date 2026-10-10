@@ -316,11 +316,12 @@ export const ScheduleView:React.FC=()=>{
     }
     if(current.tasks.length>=180){setError('Limite de 180 serviços por cronograma.');return;}
     let composition:SinapiComposition;
+    const catalogReference=selectedCatalogComposition.reference||reference.trim();
     try {
       if(usableSinapiComposition(selectedCatalogComposition)){
         composition=selectedCatalogComposition;
       }else {
-        const sourceMonth=selectedCatalogComposition.reference||reference.trim();
+        const sourceMonth=catalogReference;
         if(!regionalUF||!regionalRegime||!validCompetence(sourceMonth))
           throw Error('Informe a UF e os encargos SINAPI. A competência da composição salva é preservada.');
         composition=withSinapiProvenance(selectedCatalogComposition,{
