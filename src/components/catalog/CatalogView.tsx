@@ -96,7 +96,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     e.preventDefault();
     if (!name.trim()) return;
     if (sinapiNeedsSalePrice && (!Number.isFinite(price)||price<=0)) {window.alert('Defina um preço de VENDA maior que zero. O valor SINAPI importado é apenas o custo de referência.');return;}
-    if (cost.trim() !== '' && (!Number.isFinite(Number(cost)) || Number(cost) < 0)) { window.alert('Informe um custo válido ou deixe o campo em branco.'); return; }
+    if (cost.trim() !== '' && (!Number.isFinite(Number(cost.trim().replace(',','.'))) || Number(cost.trim().replace(',','.')) < 0)) { window.alert('Informe um custo válido ou deixe o campo em branco.'); return; }
     const confirmedCost = cost.trim() !== '';
 
     if (itemToEdit) {
@@ -106,7 +106,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         type,
         category: category.trim() || 'Geral',
         price: Number(price) || 0,
-        cost: confirmedCost ? Number(cost) : undefined,
+        cost: confirmedCost ? Number(cost.trim().replace(',','.')) : undefined,
         costConfirmed: confirmedCost,
         unit,
         laborType: type === 'mao_de_obra' ? laborType : undefined,
@@ -120,7 +120,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         type,
         category: category.trim() || 'Geral',
         price: Number(price) || 0,
-        cost: confirmedCost ? Number(cost) : undefined,
+        cost: confirmedCost ? Number(cost.trim().replace(',','.')) : undefined,
         costConfirmed: confirmedCost,
         unit,
         laborType: type === 'mao_de_obra' ? laborType : undefined,
@@ -469,9 +469,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                     Custo direto do item (R$)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
+                    inputMode="decimal"
                     value={cost}
                     onChange={e => setCost(e.target.value)}
                     placeholder="Deixe vazio se desconhecido"
