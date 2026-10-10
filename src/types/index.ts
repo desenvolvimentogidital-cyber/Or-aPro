@@ -87,6 +87,7 @@ export interface Quote {
   notes?: string;
   paymentTerms?: string;
   modelTemplate: 'padrao' | 'moderno' | 'profissional';
+  referenceSettings?: import('../utils/constructionReferences').ConstructionReferenceSettings; // Preferência, não reajuste automático
   history?: {
     date: string;
     action: string;
