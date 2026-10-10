@@ -43,19 +43,21 @@ export function findCatalogSinapiCandidates(
   if(compositions.length>120000 || !Number.isSafeInteger(limit) || limit<1) return [];
   const wanted=stems(item.name),searched=stems(query);
   const rawQuery=normalized(query),rawName=normalized(item.name);
+  // Aceita código SINAPI inteiro, prefixo (ex.: 919) e "SINAPI 91996".
+  const codePart=rawQuery.match(/(?:^| )(\d{3,8})(?: |$)/)?.[1]||'';
   const found:Array<{entry:SinapiComposition;score:number}>=[];
   for(const entry of compositions) {
     if(!entry || !Array.isArray(entry.labor) || !entry.labor.length) continue;
     const tokens=stems(entry.description);
     const codeName=containsCode(rawName,entry.code);
-    const codeQuery=!!rawQuery && containsCode(rawQuery,entry.code);
+    const codeQuery=!!codePart && entry.code.startsWith(codePart);
     const same=[...wanted].filter(token=>tokens.has(token)).length;
     const queryMatch=[...searched].filter(token=>tokens.has(token)).length;
     if(rawQuery && !codeQuery && (searched.size===0 || queryMatch===0) &&
       !normalized(entry.description).includes(rawQuery))continue;
     if(!rawQuery && !codeName && same===0)continue;
     const exactUnit=sameServiceUnit(item.unit,entry.unit);
-    const score=(codeQuery?10000:0)+(codeName?5000:0)
+    const score=(codeQuery?(codePart===entry.code?12000:10000):0)+(codeName?5000:0)
       +(queryMatch*300)+(same*120)+(exactUnit?250:0)
       +((wanted.size && same===wanted.size)?80:0)
       +((searched.size && queryMatch===searched.size)?150:0);
