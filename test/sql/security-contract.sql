@@ -6,7 +6,8 @@ INSERT INTO auth.users(id) VALUES
 DO $$
 BEGIN
   IF has_table_privilege('anon', 'public.orcapro_workspaces', 'SELECT') OR
-     has_table_privilege('anon', 'public.orcapro_shared_quotes', 'SELECT') THEN
+     has_table_privilege('anon', 'public.orcapro_shared_quotes', 'SELECT') OR
+     has_table_privilege('anon', 'public.orcapro_sinapi_compositions', 'SELECT') THEN
     RAISE EXCEPTION 'Anon nao pode ter SELECT nas tabelas privadas';
   END IF;
 END $$;
@@ -16,6 +17,18 @@ SET ROLE authenticated;
 INSERT INTO public.orcapro_workspaces (user_id, payload)
 VALUES ('00000000-0000-4000-8000-00000000000a',
  '{"quotes":[{"id":"orc-qa-a","status":"enviado","number":"#QA-A","history":[]}],"notifications":[]}'::jsonb);
+INSERT INTO public.orcapro_sinapi_compositions
+(user_id,reference,code,description,unit,labor,source_file,source_sheet)
+values ('00000000-0000-4000-8000-00000000000a','09/2026','100860',
+ 'COMPOSICAO DE TESTE SINAPI', 'UN',
+ '[{"code":"qa","role":"Profissional de teste","hoursPerUnit":1.2}]'::jsonb,
+ 'planilha_qa.xlsx','Analítico');
+DO $sinapi$ BEGIN
+ IF (SELECT count(*) FROM public.orcapro_find_sinapi('100860'))<>1 THEN
+   RAISE EXCEPTION 'A conta dona nao consegue pesquisar sua composição SINAPI';
+ END IF;
+END $sinapi$;
+
 INSERT INTO public.orcapro_shared_quotes
 (token, user_id, quote_id, payload, expires_at)
 VALUES
@@ -46,7 +59,9 @@ DO $$
 DECLARE changed integer;
 BEGIN
   IF (SELECT count(*) FROM public.orcapro_workspaces) <> 0 OR
-     (SELECT count(*) FROM public.orcapro_shared_quotes) <> 0 THEN
+     (SELECT count(*) FROM public.orcapro_shared_quotes) <> 0 OR
+     (SELECT count(*) FROM public.orcapro_sinapi_compositions) <> 0 OR
+     (SELECT count(*) FROM public.orcapro_find_sinapi('100860')) <> 0 THEN
     RAISE EXCEPTION 'RLS permitiu ao usuario B ler dados do usuario A';
   END IF;
   UPDATE public.orcapro_workspaces SET revision=revision+1

@@ -98,3 +98,22 @@ test('importação rejeita composição de referências de meses diferentes',()=
   const p=parseSinapiRows(flat,'mesA.xlsx','Analítico');
   assert.throws(()=>mergeSinapiReports([{...p,reference:'07/2026'},{...p,reference:'08/2026'}]),/competências diferentes/);
 });
+
+
+test('SINAPI oficial: EPI e ferramentas horistas não viram profissionais ou HH',()=>{
+  const rows=[
+    ['SINAPI'],['RELATÓRIO ANALÍTICO DE COMPOSIÇÕES'],['Mês de Referência:','09/2026'],
+    [],[],[],[],[],
+    ['Grupo','Código da\nComposição','Tipo Item','Código do\nItem','Descrição','Unidade','Coeficiente','Situação'],
+    ['Acessibilidade',105006,'','','RAMPA DE ACESSIBILIDADE','UN','','COM CUSTO'],
+    ['Acessibilidade',105006,'COMPOSICAO',88316,'SERVENTE COM ENCARGOS COMPLEMENTARES','H',2.189,'COM CUSTO'],
+    ['Acessibilidade',105006,'COMPOSICAO',88309,'PEDREIRO COM ENCARGOS COMPLEMENTARES','H',1.094,'COM CUSTO'],
+    ['Acessibilidade',105006,'INSUMO',43488,'EPI - FAMILIA OPERADOR ESCAVADEIRA - HORISTA (ENCARGOS COMPLEMENTARES - COLETADO CAIXA)','H',.811428164,'COM PREÇO'],
+    ['Acessibilidade',105006,'INSUMO',43464,'FERRAMENTAS - FAMILIA OPERADOR ESCAVADEIRA - HORISTA (ENCARGOS COMPLEMENTARES - COLETADO CAIXA)','H',.811428164,'COM PREÇO'],
+  ];
+  const result=parseSinapiRows(rows,'SINAPI_Referência_2026_09.xlsx','Analítico');
+  assert.equal(result.compositions.length,1);
+  const labor=result.compositions[0].labor;
+  assert.deepEqual(labor.map(l=>l.code).sort(),['88309','88316']);
+  assert.ok(Math.abs(labor.reduce((sum,l)=>sum+l.hoursPerUnit,0)-3.283)<1e-9);
+});

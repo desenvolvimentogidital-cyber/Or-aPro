@@ -76,7 +76,10 @@ try{
  ]){
    const region=page.getByRole('region',{name:'Do orçamento para o cronograma'});
    await region.getByRole('button',{name:new RegExp(label)}).first().click();
-   await region.getByLabel(/Confirme a composição adequada/).selectOption(code+'|m²');
+   const selector=region.getByLabel(/Confirme a composição adequada/);
+   const key=await selector.locator('option').filter({hasText:new RegExp('^'+code+'\\b')}).first().getAttribute('value');
+   assert.ok(key,'Composição esperada ausente: '+code);
+   await selector.selectOption(key);
    await region.getByLabel(/Prazo desejado em dias úteis/).fill('10');
    await region.getByRole('button',{name:'Adicionar etapa com equipe simulada'}).click();
    await page.getByText('Este item já está ligado', {exact:false}).first().waitFor({timeout:3000}).catch(()=>{});
