@@ -27,7 +27,7 @@ export const SinapiReferencePicker:React.FC<Props>=({onSelect,title='Buscar todo
   useEffect(()=>{
     const generation=++epoch.current;
     abort.current?.abort();
-    setEntries([]);setTotal(0);setError('');
+    setEntries([]);setTotal(0);setError('');setMoreLoading(false);
     if(!session){setLoading(false);setError('Faça login para consultar o SINAPI.');return;}
     setLoading(true);
     const controller=new AbortController();
