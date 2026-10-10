@@ -114,6 +114,26 @@ export const ScheduleView:React.FC=()=>{
   const current=resolveScheduleSelection(schedules,selectedScheduleId);
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
   const staffing=useMemo(()=>report?peakCrewDemand(report):null,[report]);
+  // O quadro de equipe ainda necessária não conta serviços medidos como
+  // concluídos, mas mantém HH históricas e preços intactos no cronograma.
+  const remainingLabor=useMemo(()=>{
+    const roles=new Map<string,{code:string;role:string;hh:number}>();
+    let hh=0,finished=0,withoutHH=0;
+    for(const entry of report?.entries||[]) {
+      const remainingQuantity=Math.max(0,entry.task.quantity-measuredQuantity(entry.task));
+      if(remainingQuantity<=0.000001){finished++;continue;}
+      if(!entry.labor.length){withoutHH++;continue;}
+      const factor=remainingQuantity/entry.task.quantity;
+      for(const l of entry.labor){
+        const key=`${l.code}:${l.role}`;
+        const hours=l.hours*factor;
+        const previous=roles.get(key);
+        roles.set(key,{code:l.code,role:l.role,hh:(previous?.hh||0)+hours});
+        hh+=hours;
+      }
+    }
+    return {hh,finished,withoutHH,roles:[...roles.values()].sort((a,b)=>b.hh-a.hh)};
+  },[report]);
   const categorySummary=useMemo(()=>{
     const grouped=new Map<string,{label:string;steps:number;hh:number}>();
     for(const entry of report?.entries||[]){
@@ -847,6 +867,14 @@ export const ScheduleView:React.FC=()=>{
       </section>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
+      {remainingLabor.finished>0 && <section aria-label="Mão de obra ainda necessária" className={`${tile} space-y-2 p-4`}>
+        <h2 className="text-sm font-bold">Mão de obra que ainda falta executar</h2>
+        <p className="text-xs text-slate-200">Serviços totalmente medidos como executados: <strong>{remainingLabor.finished}</strong>. HH restantes conhecidas: <strong>{fmt(remainingLabor.hh,2)} HH</strong>{remainingLabor.withoutHH>0?` · ${remainingLabor.withoutHH} etapa(s) sem coeficientes`:''}.</p>
+        <div className="grid gap-2 sm:grid-cols-2">{remainingLabor.roles.map(l=><div key={`${l.code}:${l.role}`} className="rounded-lg bg-white/5 p-2.5 text-[11px]">
+          <strong className="text-sky-200">{l.role}</strong><span className="block text-slate-300">{fmt(l.hh,2)} HH ainda previstas</span>
+        </div>)}</div>
+        <p className="text-[11px] text-amber-200">Por exemplo, quando a hidráulica estiver concluída e registrada na medição da etapa, a função encanador deixa de aparecer nas HH restantes. Não apagamos suas HH históricas. A parcela restante é proporcional à quantidade medida; confirme o trabalho efetivamente realizado.</p>
+      </section>}
       {categorySummary.length>0 && <section className={`${tile} space-y-2 p-4`} aria-label="Resumo do cronograma por especialidade">
         <h2 className="text-sm font-bold">Frentes de trabalho por especialidade</h2>
         <div className="grid gap-2 sm:grid-cols-2">{categorySummary.map(row=><div key={row.label} className="rounded-lg border border-white/10 p-3">
