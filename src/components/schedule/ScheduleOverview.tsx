@@ -45,8 +45,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
        </div>
      </div>
      <div className="relative z-10 grid min-w-[230px] gap-x-3 gap-y-1 text-[11px] sm:grid-cols-[105px_auto]">
-       <span className="font-semibold text-slate-400">OBRA</span><strong className="truncate" title={schedule.title}>{schedule.title||'Sem identificação'}</strong>
-       <span className="font-semibold text-slate-400">LOCAL</span><span className="truncate" title={schedule.siteAddress||''}>{schedule.siteAddress||'Não informado'}</span>
+       <span className="font-semibold text-slate-400">OBRA</span><strong className="min-w-0 break-words" title={schedule.title}>{schedule.title||'Sem identificação'}</strong>
+       <span className="font-semibold text-slate-400">LOCAL</span><span className="min-w-0 break-words" title={schedule.siteAddress||''}>{schedule.siteAddress||'Não informado'}</span>
        <span className="font-semibold text-slate-400">INÍCIO PREVISTO</span><span>{shortDate(model.start)}</span>
        <span className="font-semibold text-slate-400">TÉRMINO PREVISTO</span><span>{shortDate(model.end)}</span>
        <span className="font-semibold text-slate-400">DURAÇÃO TOTAL</span><span>{model.duration===null?'A definir':`${model.duration} dias úteis`}</span>
@@ -67,16 +67,17 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
      </div>
      <div className={`${box} xl:col-span-8`}>
        <h3 className={title}><CalendarDays size={16} className="text-orange-400"/> Gráfico de Gantt — cronograma físico</h3>
-       {labels.length ? <div className="overflow-x-auto" role="region" aria-label="Gantt mensal do planejamento">
+        {labels.length>0&&<p className="px-3 py-1.5 text-[11px] text-slate-400 sm:hidden">Deslize o gráfico para os lados para visualizar todos os meses.</p>}
+       {labels.length ? <div className="orcapro-horizontal-region overflow-x-auto" role="region" aria-label="Gantt mensal do planejamento" tabIndex={0}>
          <div style={{minWidth:width}}>
            <div className="grid border-b border-[#214766] bg-[#10263b]" style={{gridTemplateColumns:`220px repeat(${labels.length},minmax(0,1fr))`}}>
-             <div className="p-2 text-[10px] font-bold uppercase">Atividade</div>
+             <div className="sticky left-0 z-10 border-r border-[#23506b] bg-[#10263b] p-2 text-[10px] font-bold uppercase">Atividade</div>
              {labels.map(m=><div key={m.key} className="border-l border-[#23506b] px-0.5 py-2 text-center text-[10px] font-bold uppercase">{m.label}</div>)}
            </div>
            {summary.map((s,i)=>{
              const bar=rangeOf(s,labels);
              return <div key={s.id} className="grid min-h-[41px] border-b border-[#1d3647] last:border-0" style={{gridTemplateColumns:'220px 1fr'}}>
-               <div className="flex min-w-0 items-center gap-2 border-r border-[#23506b] px-2 py-1.5 text-[10px]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-bold text-white" style={{background:s.color}}>{i+1}</span><span className="truncate" title={s.description}>{s.description}</span></div>
+               <div className="sticky left-0 z-10 flex min-w-0 items-center gap-2 border-r border-[#23506b] bg-[#0c2032] px-2 py-1.5 text-[10px]"><span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-bold text-white" style={{background:s.color}}>{i+1}</span><span className="truncate" title={s.description}>{s.description}</span></div>
                <div className="relative min-h-[41px]" style={{backgroundImage:'linear-gradient(to right,rgba(40,86,116,.6) 1px,transparent 1px)',backgroundSize:`${100/labels.length}% 100%`}}>
                  {bar?<div className="absolute top-[11px] h-[16px] rounded-[3px] border border-white/10 shadow-[0_0_9px_rgba(0,0,0,.45)]" style={{left:`${bar.left}%`,width:`${bar.width}%`,background:s.color}} title={`${s.description}: ${shortDate(s.start)} a ${shortDate(s.end)} · ${s.duration} dias úteis`}/>:<span className="absolute left-3 top-3 text-[10px] italic text-amber-300">Prazo pendente</span>}
                </div>
@@ -91,7 +92,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
    <div className="grid items-start gap-2 xl:grid-cols-12">
      <div className={`${box} xl:col-span-8`}>
        <h3 className={title}><HardHat size={16} className="text-orange-400"/> Detalhamento dos serviços</h3>
-       <div className="max-h-[375px] overflow-auto"><table className="w-full min-w-[700px] text-left text-[10px]">
+       <p className="px-3 py-1.5 text-[11px] text-slate-400 sm:hidden">Arraste a tabela lateralmente para consultar todas as colunas.</p>
+        <div className="orcapro-horizontal-region max-h-[375px] overflow-auto" role="region" aria-label="Tabela de serviços e prazos do cronograma" tabIndex={0}><table className="w-full min-w-[700px] text-left text-[10px]">
          <thead className="sticky top-0 z-10 bg-[#122538] text-slate-300"><tr>{['Etapa','Serviço / quantidade','% HH','Início','Término','Dias úteis','Status'].map(h=><th key={h} className="whitespace-nowrap px-2 py-2 uppercase">{h}</th>)}</tr></thead>
          <tbody>{summary.map((s,i)=><tr key={s.id} className="border-t border-[#1b354c]">
            <td className="px-2 py-2"><span className="rounded px-2 py-1 font-bold text-white" style={{background:s.color}}>{i+1}</span></td>
@@ -123,7 +125,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
          <h3 className={title}><TrendingUp size={16} className="text-orange-400"/> Curva S — evolução física</h3>
          {labels.length?<div className="p-3">
            <div className="mb-1 flex justify-end gap-3 text-[10px]"><span className="text-orange-400">━ Planejado</span><span className="text-amber-200">{model.hasMeasurements?'┄ Realizado':'Realizado: sem medições'}</span></div>
-           <svg viewBox="0 0 640 212" role="img" aria-label="Curva S com percentuais acumulados por mês" className="h-auto w-full">
+           <div className="orcapro-horizontal-region overflow-x-auto" role="region" aria-label="Visualização horizontal da Curva S" tabIndex={0}>
+          <svg viewBox="0 0 640 212" role="img" aria-label="Curva S com percentuais acumulados por mês" className="h-auto min-w-[580px] w-full">
              {[0,25,50,75,100].map(p=><g key={p}><line x1="38" x2="620" y1={171-p*1.44} y2={171-p*1.44} stroke="#214058" strokeWidth="1"/><text x="29" y={175-p*1.44} fontSize="12" fill="#a4bad0" textAnchor="end">{p}%</text></g>)}
              {labels.map((m,i)=><g key={m.key}><line x1={40+(i+.5)*570/labels.length} x2={40+(i+.5)*570/labels.length} y1="27" y2="171" stroke="#1d384d" strokeWidth="1"/><text x={40+(i+.5)*570/labels.length} y="194" fill="#a4bad0" textAnchor="middle" fontSize={labels.length>12?8:11}>{m.key.slice(5)}/{m.key.slice(2,4)}</text></g>)}
              {planned.path&&<path d={planned.path} stroke="#ff8819" strokeWidth="3.5" fill="none" strokeLinejoin="round"/>}
@@ -131,7 +134,8 @@ export const ScheduleOverview:React.FC<Props>=({schedule,quote,company,onPrepare
              {planned.points.map((p,i)=><circle key={'p'+i} cx={p.x} cy={p.y} r="3.5" fill="#ff8819"/>)}
              {model.hasMeasurements&&actual.points.map((p,i)=><circle key={'a'+i} cx={p.x} cy={p.y} r="3" fill="#ffd166"/>)}
            </svg>
-           <p className="text-[10px] leading-relaxed text-slate-400">Planejado por HH distribuídas nos dias úteis da etapa; realizado por medições datadas. Não equivale à curva de custos.</p>
+           </div>
+           <p className="mt-2 text-[10px] leading-relaxed text-slate-400">Deslize o gráfico horizontalmente para ler os meses. Planejado por HH distribuídas nos dias úteis da etapa; realizado por medições datadas. Não equivale à curva de custos.</p>
          </div>:<div className="p-4 text-xs text-slate-400">A curva será exibida quando todas as datas puderem ser calculadas.</div>}
        </div>
      </div>

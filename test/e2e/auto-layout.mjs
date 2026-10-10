@@ -16,6 +16,23 @@ const payload={quotes:[],clients:[],catalog:[],expenses:[],company:{name:'Empres
   notifications:[],schedules:[schedule],financeEntries:[],lastQuoteNumber:0};
 const browser=await chromium.launch({headless:true});
 try{
+ const authPage=await browser.newPage({viewport:{width:375,height:812}});
+ await authPage.goto(base,{waitUntil:'domcontentloaded'});
+ await authPage.getByRole('heading',{name:'Bem-vindo de volta'}).waitFor();
+ const password=authPage.locator('#orcapro-auth-password');
+ assert.equal(await password.getAttribute('type'),'password');
+ await authPage.getByRole('button',{name:'Mostrar senha'}).click();
+ assert.equal(await password.getAttribute('type'),'text','Exibir senha sem alterar autenticacao');
+ await authPage.getByRole('button',{name:'Ocultar senha'}).click();
+ assert.equal(await password.getAttribute('type'),'password');
+ await authPage.getByRole('button',{name:'Criar conta'}).click();
+ await authPage.getByRole('heading',{name:'Crie sua conta'}).waitFor();
+ await authPage.getByRole('button',{name:'Esqueci minha senha'}).click();
+ await authPage.getByRole('heading',{name:'Recupere o acesso'}).waitFor();
+ const authWidth=await authPage.evaluate(()=>document.documentElement.scrollWidth);
+ assert.ok(authWidth<=375,'Login mobile nao pode gerar rolagem horizontal');
+ await authPage.close();
+ console.log('PASS login, cadastro e recuperacao adaptados ao telefone');
  const page=await browser.newPage({viewport:{width:390,height:844}});
  const errors=[];
  page.on('pageerror',e=>errors.push(e.message));
@@ -32,6 +49,11 @@ try{
  const assertPhone=async width=>{
    await page.setViewportSize({width,height:844});
    await bottom.waitFor({state:'visible'});
+   // O container possui uma transicao CSS: medir apenas depois de estabilizar.
+   await page.waitForFunction(w=>{
+     const main=document.querySelector('main');
+     return !!main&&Math.abs(main.getBoundingClientRect().width-w)<3;
+   },width,{timeout:5000});
    assert.equal(await side.isVisible().catch(()=>false),false,'Sidebar desktop nao pode aparecer em '+width);
    const main=await page.locator('main').boundingBox();
    assert.ok(main,'main deve estar visivel');
@@ -41,16 +63,32 @@ try{
    assert.ok(totalWidth<=width+2,'Rolagem horizontal global em '+width+': '+totalWidth);
  };
  await assertPhone(390);
+ await assertPhone(320);
+ await assertPhone(390);
  await bottom.getByRole('button',{name:'Cronograma'}).click();
  await overview.waitFor({timeout:12000});
  await overview.getByText('Cronograma de obras').waitFor();
  assert.equal(await page.getByRole('link',{name:'Editar planejamento'}).isVisible(),true);
+ const gantt=page.getByRole('region',{name:'Gantt mensal do planejamento'});
+ await gantt.waitFor();
+ assert.equal(await gantt.getAttribute('tabindex'),'0','Gantt deve permitir navegacao por teclado');
+ const details=page.getByRole('region',{name:'Tabela de serviços e prazos do cronograma'});
+ assert.equal(await details.getAttribute('tabindex'),'0','Detalhamento precisa ser rolavel pelo teclado');
+ await overview.getByRole('button',{name:'Gerar relatório PDF'}).click();
+ const preview=page.getByRole('region',{name:'Prévia do relatório do cronograma'});
+ await preview.waitFor({state:'visible'});
+ const openReport=preview.getByRole('link',{name:/Abrir relatório em nova aba/});
+ await openReport.waitFor({state:'visible'});
+ assert.equal(await openReport.getAttribute('target'),'_blank');
+ assert.match(await openReport.getAttribute('href')||'',/^blob:/,'O PDF deve poder abrir como documento local');
+ await preview.getByRole('button',{name:'Fechar prévia'}).click();
+ await preview.waitFor({state:'hidden'});
  await mkdir('artifacts',{recursive:true});
  await page.screenshot({path:'artifacts/orcapro-cronograma-auto-mobile.png',fullPage:true});
  await assertPhone(375);
  await assertPhone(430);
  await assertPhone(767);
- console.log('PASS mobile tela cheia 375 / 390 / 430 / 767 com cronograma acessivel');
+ console.log('PASS mobile tela cheia 320 / 375 / 390 / 430 / 767 com Gantt e PDF acessiveis');
 
  await page.setViewportSize({width:768,height:960});
  await bottom.waitFor({state:'visible'});
@@ -59,6 +97,10 @@ try{
  await side.waitFor({state:'visible'});
  assert.equal(await bottom.isVisible(),false,'Navegacao inferior nao deve aparecer no desktop');
  await overview.waitFor();
+ await page.waitForFunction(()=>{
+   const main=document.querySelector('main');
+   return !!main&&main.getBoundingClientRect().width>1000;
+ },undefined,{timeout:5000});
  const wide=await page.locator('main').boundingBox();
  assert.ok(wide.width>1000,'Cronograma web precisa de area ampla, mediu '+wide.width);
  await page.screenshot({path:'artifacts/orcapro-cronograma-auto-web.png',fullPage:true});

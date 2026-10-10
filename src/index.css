@@ -45,3 +45,21 @@ body {
     box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9);
   }
 }
+
+/* Respeita a area dos gestos do Android/iOS sem esconder os atalhos.
+   A barra continua compacta em celulares de 320px e tablets. */
+.orcapro-bottom-nav {
+  padding-top: 0.5rem;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* Permite explorar tabelas/Gantt pelo teclado sem rolagem horizontal da pagina. */
+.orcapro-horizontal-region {
+  scrollbar-width: thin;
+  scrollbar-color: #48647b #0c1c2b;
+  overscroll-behavior-x: contain;
+}
+.orcapro-horizontal-region:focus-visible {
+  outline: 2px solid #fb923c;
+  outline-offset: -2px;
+}

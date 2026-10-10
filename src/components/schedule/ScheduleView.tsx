@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Upload, Plus, Trash2, HardHat, Clock3, Info, AlertTriangle, Search, FileSpreadsheet, CheckCircle2, BarChart3, Download, ChevronDown, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -60,9 +60,23 @@ export const ScheduleView:React.FC=()=>{
   const [showImport,setShowImport]=useState(true);
   const [holidayInput,setHolidayInput]=useState('');
   const [printHtml,setPrintHtml]=useState('');
+  const [printUrl,setPrintUrl]=useState('');
   const [ganttPage,setGanttPage]=useState(0);
   const fileRef=useRef<HTMLInputElement>(null);
   const printableFrameRef=useRef<HTMLIFrameElement>(null);
+  const pdfPreviewRef=useRef<HTMLElement>(null);
+  // O relatório é gerado localmente; a aba independente permite usar
+  // "Imprimir / Salvar PDF" inclusive quando o navegador móvel não imprime iframes.
+  useEffect(()=>{
+    if(!printHtml){setPrintUrl('');return;}
+    const url=URL.createObjectURL(new Blob([printHtml],{type:'text/html;charset=utf-8'}));
+    setPrintUrl(url);
+    window.requestAnimationFrame(()=>pdfPreviewRef.current?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',
+      block:'start'
+    }));
+    return ()=>URL.revokeObjectURL(url);
+  },[printHtml]);
   const current=resolveScheduleSelection(schedules,selectedScheduleId);
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
   // Um grupo de 15 dias úteis por vez: datas REAIS legíveis, mesmo em obras longas.
@@ -274,7 +288,7 @@ export const ScheduleView:React.FC=()=>{
         </div>;
       })}
     </section>}
-    {printHtml&&<section className={`${tile} space-y-2 p-3`}><div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-xs text-orange-300">Cronograma pronto para impressão</strong><div className="flex items-center gap-3"><button className="rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white" onClick={()=>printableFrameRef.current?.contentWindow?.print()}>Imprimir / Salvar PDF</button><button className="text-xs text-slate-400" onClick={()=>setPrintHtml('')}>Fechar prévia</button></div></div><p className="text-[11px] text-slate-400">Use o botão de impressão e selecione “Salvar como PDF” no navegador. Dados são os que estão no cronograma atual, sem alterações no orçamento.</p><iframe ref={printableFrameRef} title="Prévia do cronograma para PDF" srcDoc={printHtml} className="h-[580px] w-full rounded-xl border border-white/10 bg-white" sandbox="allow-modals allow-same-origin"/></section>}
+    {printHtml&&<section ref={pdfPreviewRef} role="region" aria-label="Prévia do relatório do cronograma" className={`${tile} scroll-mt-4 space-y-3 p-3 sm:p-4`}><div className="flex flex-wrap items-center justify-between gap-3"><strong className="text-sm text-orange-300">Cronograma pronto para impressão</strong><div className="flex flex-wrap items-center gap-2"><button type="button" className="min-h-11 rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-500" onClick={()=>{const frame=printableFrameRef.current?.contentWindow;frame?.focus();frame?.print();}}>Imprimir / Salvar PDF</button>{printUrl&&<a href={printUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-orange-500/40 px-3 py-2 text-xs font-semibold text-orange-200 hover:bg-orange-500/10">Abrir relatório em nova aba ↗</a>}<button type="button" className="min-h-11 rounded-lg px-3 py-2 text-xs text-slate-300 hover:bg-white/10" onClick={()=>setPrintHtml('')}>Fechar prévia</button></div></div><p className="text-xs leading-relaxed text-slate-300">No computador, use “Imprimir / Salvar PDF”. No celular, caso a impressão integrada não abra, toque em “Abrir relatório em nova aba” e use a função Imprimir → Salvar como PDF do navegador. Nenhum arquivo é enviado a servidores externos.</p><iframe ref={printableFrameRef} title="Prévia do cronograma para PDF" srcDoc={printHtml} className="h-[480px] w-full rounded-xl border border-white/10 bg-white sm:h-[580px]" sandbox="allow-modals allow-same-origin"/></section>}
     {error&&<div role="alert" className="flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300"><AlertTriangle size={16}/>{error}</div>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
