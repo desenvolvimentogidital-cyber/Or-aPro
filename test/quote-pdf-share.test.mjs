@@ -36,9 +36,9 @@ test('gera PDF real A4 com texto editável/selecionável e nome de arquivo segur
   assert.ok(s.endsWith('%%EOF\n'));
   assert.equal(offsets(bytes),1);
   assert.match(s,/\/MediaBox \[0 0 595.28 841.89\]/);
-  assert.match(s,/OR.CAMENTO/); // ÊN/Ç cedilha codificadas em PDF WinAnsi
+  assert.ok(s.includes(String.raw`OR\307AMENTO`)); // ÊN/Ç cedilha codificadas em PDF WinAnsi
   assert.match(s,/Cliente Maria/);
-  assert.match(s,/Instala\344\343o de tomada/);
+  assert.ok(s.includes(String.raw`Instala\347\343o de tomada`));
   assert.match(s,/500,00/);
   assert.ok(quotePdfFilename('#0123').endsWith('.pdf'));
   assert.doesNotMatch(quotePdfFilename('../../dangerous#42'),/\.\./);
@@ -51,15 +51,15 @@ test('não imprime itens escondidos, preço ocultado, Pix ou termos se configura
   assert.doesNotMatch(s,/Cabo especial CONFIDENCIAL/);
   assert.doesNotMatch(s,/CHAVE-QA/);
   assert.doesNotMatch(s,/50% de entrada/);
-  assert.doesNotMatch(s,/TOTAL DO OR\307AMENTO/);
-  assert.match(s,/Instala\344\343o/);
+  assert.ok(!s.includes(String.raw`TOTAL DO OR\307AMENTO`));
+  assert.ok(s.includes(String.raw`Instala\347\343o`));
 });
 test('relatório grande é paginado com referências, textos e páginas válidas',()=>{
   const long={...quote,items:Array.from({length:90},(_,i)=>item(i,'Instalação de quadro elétrico '+i+' com acessórios e identificação completa'))};
   const bytes=pdf(long);
   assert.ok(bytes.length>20000);
   assert.ok(offsets(bytes)>=3);
-  assert.match(source(bytes),/Instala\344\343o de quadro el\351trico 89/);
+  assert.ok(source(bytes).includes(String.raw`Instala\347\343o de quadro el\351trico 89`));
 });
 test('arquivo gerado para Android usa MIME application/pdf, não mensagem de texto',()=>{
   const file=makeQuotePdfFile({quote,company});
