@@ -21,6 +21,7 @@
     "src/utils/sinapiCosts.ts",
     "src/utils/sinapiFile.ts",
     "src/utils/quoteMath.ts",
+    "src/utils/pricingWorkload.ts",
     "src/utils/bdi.ts",
     "src/utils/dashboardMetrics.ts",
     "src/types/schedule.ts",
