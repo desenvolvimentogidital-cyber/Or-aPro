@@ -6,7 +6,7 @@ import {countSavedSinapi,searchSavedSinapi,saveSinapiLibrary,isAnalyticalSinapi}
 import { useTheme } from '../../context/ThemeContext';
 import { importSinapiFile } from '../../utils/sinapiFile';
 import {sinapiUFs, withSinapiProvenance, validCompetence, sinapiOriginLabel, type SinapiUF, type SinapiRegime} from '../../utils/sinapiRegional';
-import { estimateSchedule, validScheduleDate, scheduleWorkdayDates } from '../../utils/scheduleMath';
+import { estimateSchedule, validScheduleDate, scheduleWorkdayDates, peakCrewDemand } from '../../utils/scheduleMath';
 import { physicalFinancial } from '../../utils/physicalFinancial';
 import { buildScheduleDocument } from '../../utils/scheduleDocument';
 import { ScheduleOverview } from './ScheduleOverview';
@@ -110,8 +110,15 @@ export const ScheduleView:React.FC=()=>{
   },[printHtml]);
   const current=resolveScheduleSelection(schedules,selectedScheduleId);
   const report=useMemo(()=>current?estimateSchedule(current):null,[current]);
+  const staffing=useMemo(()=>report?peakCrewDemand(report):null,[report]);
   // Um grupo de 15 dias úteis por vez: datas REAIS legíveis, mesmo em obras longas.
-  const timeline=useMemo(()=>current&&report?.finishDate?scheduleWorkdayDates(current.startDate,report.finishDate,current.holidays||[]):[],[current,report]);
+  // Mesmo com etapas pendentes, mostre as datas das etapas já dimensionadas.
+  // Não atribua término GLOBAL à obra enquanto houver qualquer pendência.
+  const visibleFinish=report?.finishDate || report?.entries.reduce<string|null>(
+    (max,e)=>e.end && (!max||e.end>max)?e.end:max,null) || null;
+  const timeline=useMemo(()=>current&&visibleFinish
+    ?scheduleWorkdayDates(current.startDate,visibleFinish,current.holidays||[])
+    :[],[current,visibleFinish]);
   const pageCount=Math.ceil(timeline.length/15);
   const safeGanttPage=Math.min(ganttPage,Math.max(0,pageCount-1));
   const ganttDates=timeline.slice(safeGanttPage*15,(safeGanttPage+1)*15);
@@ -294,6 +301,25 @@ export const ScheduleView:React.FC=()=>{
     }
     const task:ScheduleTask={id:newId('etapa'),composition,quantity:q,crew:{},quoteItemId:linkedItem?.id,dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]};
     change({tasks:[...current.tasks,task]});setError('');setQuantity('');setSelectedQuoteItem('');
+  };
+  /** Atualiza quantidades com consentimento, preservando IDs, composição,
+   * equipe, predecessoras e medições existentes; nunca reduz abaixo do medido. */
+  const syncLinkedQuoteQuantities=()=>{
+    if(!current||!attached)return;
+    let updated=0,blocked=0;
+    const tasks=current.tasks.map(task=>{
+      if(!task.quoteItemId)return task;
+      const item=attached.items.find(q=>q.id===task.quoteItemId);
+      if(!item)return task;
+      if(!sameServiceUnit(item.unit,task.composition.unit) ||
+        !Number.isFinite(item.quantity) || item.quantity<=0 ||
+        item.quantity+0.000001<measuredQuantity(task)){blocked++;return task;}
+      if(Math.abs(task.quantity-item.quantity)<=0.000001)return task;
+      updated++;
+      return {...task,quantity:item.quantity};
+    });
+    if(updated)change({tasks});
+    setImportInfo(`Sincronização do orçamento: ${updated} quantidade(s) atualizada(s), ${blocked} bloqueada(s) por unidade incompatível, valor inválido ou avanço medido. As composições, equipes e vínculos foram preservados. Revise os prazos recalculados.`);
   };
   const appendFromQuote=(quoteItemId:string)=>{
     if(!current || !attached){setError('Vincule um orçamento para importar os serviços.');return;}
@@ -620,7 +646,7 @@ export const ScheduleView:React.FC=()=>{
             </select>
           </div>
         </div>}
-        {catalogSimulation.result&&<p className="rounded-lg bg-[#101e2d] p-2.5 text-xs leading-relaxed text-slate-200">Mão de obra SINAPI: <strong>{fmt(catalogSimulation.result.totalHH,2)} HH</strong> · Prazo simulado: <strong>{catalogSimulation.result.projectedDays} dia(s) útil(eis)</strong> · Equipe inicial: {catalogSimulation.result.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}. Confirme a disponibilidade antes de executar.</p>}
+        {catalogSimulation.result&&<p className="rounded-lg bg-[#101e2d] p-2.5 text-xs leading-relaxed text-slate-200">Mão de obra SINAPI: <strong>{fmt(catalogSimulation.result.totalHH,2)} HH</strong> · Prazo simulado: <strong>{catalogSimulation.result.projectedDays} dia(s) útil(eis)</strong> · Equipe inicial: {catalogSimulation.result.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')} ({catalogSimulation.result.labor.reduce((sum,l)=>sum+l.workers,0)} profissionais por dia). Confirme a disponibilidade antes de executar.</p>}
         {catalogSimulation.error&&<p role="alert" className="text-xs text-rose-300">{catalogSimulation.error}</p>}
         <button type="button" onClick={appendFromCatalog} disabled={!current||!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> {selectedCatalogService?'Adicionar etapa e salvar vínculo SINAPI':'Adicionar composição ao cronograma'}</button>
       </div>}
@@ -631,6 +657,8 @@ export const ScheduleView:React.FC=()=>{
       <div>
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
         <p className="mt-2 text-xs font-medium text-emerald-200">Orçamento vinculado: {attached.number} · {attached.items.length} item(ns). Abra Configurar, escolha a composição SINAPI com a mesma unidade e confirme sua equipe e as HH.</p>
+        <button type="button" onClick={syncLinkedQuoteQuantities} className="mt-2 min-h-10 rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs font-bold text-sky-200">Atualizar quantidades das etapas vinculadas conforme orçamento</button>
+        <p className="mt-1 text-[10px] text-slate-400">Atualização manual e segura: não remove etapas, não troca composição, não altera medições nem preços. Recalcula HH e prazos com a equipe atual.</p>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
       {!knownCompositions.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">{savedLibraryCount
@@ -691,7 +719,7 @@ export const ScheduleView:React.FC=()=>{
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
-              <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet} · {chosen.reference||'competência pendente'}</p>
+              <p className="text-[10px] text-slate-400">Fonte: {chosen.sourceFile} · {chosen.sourceSheet} · {chosen.reference||'competência pendente'}</p><p className="text-[10px] text-amber-200">UF e regime indicam a obra e os encargos declarados, não certificam a origem regional deste arquivo. Os coeficientes HH são referenciais.</p>
               {!usableSinapiComposition(chosen)&&<div className="space-y-2 rounded-lg border border-orange-500/20 bg-[#101824] p-3">
                 <p className="text-xs text-orange-200">Coeficientes HH do arquivo analítico. Confirme a região e o regime; eles não alteram a produtividade declarada.</p>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -713,7 +741,7 @@ export const ScheduleView:React.FC=()=>{
                 <input className={`${control} mt-1`} type="text" inputMode="numeric" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
               </label>
               {simulation && <div className="rounded-lg bg-white/5 p-2">
-                <p className="text-[11px] font-semibold text-slate-200">Equipe simulada: {simulation.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}</p>
+                <p className="text-[11px] font-semibold text-slate-200">Equipe simulada: {simulation.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}</p><p className="mt-1 text-[11px] text-slate-300">{simulation.labor.reduce((n,l)=>n+l.workers,0)} profissional(is) por dia na etapa · rendimento médio {fmt(item.quantity/simulation.projectedDays,2)} {item.unit}/dia</p>
                 <p className="mt-1 text-[11px] text-slate-300">{fmt(simulation.totalHH,2)} HH · <strong>{simulation.projectedDays} dia(s) úteis de execução</strong> com {fmt(current.hoursPerDay,1)} h/dia e {fmt(current.efficiency*100,0)}% de eficiência.</p>
               </div>}
               {simulationError&&<p role="alert" className="text-xs text-rose-300">{simulationError}</p>}
@@ -759,12 +787,18 @@ export const ScheduleView:React.FC=()=>{
       </section>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
+      {staffing && staffing.roles.length>0 && <section aria-label="Dimensionamento de profissionais da obra" className={`${tile} space-y-2 p-4`}>
+        <h2 className="flex items-center gap-2 text-sm font-bold"><HardHat size={17} style={{color:theme.primaryColor}}/> Dimensionamento de profissionais</h2>
+        <p className="text-xs text-slate-200"><strong>{staffing.total} profissionais simultâneos no pico</strong> previsto para as etapas com prazo definido. O número considera equipes de frentes paralelas somadas no mesmo dia; não é a quantidade de pessoas contratadas.</p>
+        <div className="grid gap-2 sm:grid-cols-2">{staffing.roles.map(l=><div key={`${l.code}:${l.role}`} className="rounded-lg bg-white/5 px-3 py-2 text-xs text-slate-200"><strong>{l.workers} ×</strong> {l.role}<span className="block text-[10px] text-slate-400">Pico da função durante a obra</span></div>)}</div>
+        <p className="text-[11px] text-amber-200">Cada função requer equipe real confirmada. O pico de funções não é necessariamente simultâneo: use o total de pico para planejar mobilização e as linhas por função para contratar.</p>
+      </section>}
       <section className={`${tile} space-y-3 p-4`}><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Etapas e equipes</h2><p className="mt-1 text-[11px] text-slate-400">Defina a quantidade real de profissionais por função em cada serviço.</p></div><button type="button" disabled={!report.entries.length} onClick={()=>exportScheduleCSV(current)} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-40"><Download size={14}/> Exportar CSV</button><button type="button" disabled={!report.entries.length} onClick={()=>setPrintHtml(buildScheduleDocument(current,attached,company))} className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 px-3 py-2 text-xs text-orange-200 disabled:opacity-40">Preparar PDF</button></div>
       {report.entries.length===0?<div className="py-6 text-center text-xs text-slate-500">Nenhuma etapa adicionada. Importe a composição SINAPI e informe a quantidade para começar.</div>:report.entries.map((item,index)=><article key={item.task.id} className="space-y-3 rounded-xl border border-white/10 bg-[#0b0e15] p-3"><div className="flex items-start justify-between gap-2"><div><p className="text-[10px] font-semibold uppercase text-orange-300">Etapa {index+1} · código {item.task.composition.code}</p><h3 className="mt-1 text-xs font-semibold leading-snug text-white">{item.task.composition.description}</h3><p className="mt-1 text-[10px] text-slate-500">Origem: {item.task.composition.sourceFile} · {item.task.composition.sourceSheet} · {sinapiOriginLabel(item.task.composition)}</p></div><div className="flex shrink-0 items-center gap-1"><button disabled={index===0} title="Mover etapa acima" onClick={()=>shiftTask(index,-1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowUp size={14}/></button><button disabled={index===report.entries.length-1} title="Mover etapa abaixo" onClick={()=>shiftTask(index,1)} className="rounded-lg p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-20"><ArrowDown size={14}/></button><button title="Remover etapa" onClick={()=>removeTask(item.task.id)} className="rounded-lg p-1.5 text-rose-300 hover:bg-rose-500/10"><Trash2 size={15}/></button></div></div>
         <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-slate-400">Quantidade ({item.task.composition.unit})<EditableNumericInput aria-label={`Quantidade da etapa ${item.task.composition.code}`} className={`${control} mt-1`} value={item.task.quantity} required min={0.000001} onCommit={q=>{if(q<measuredQuantity(item.task)){setError('Não é possível reduzir a quantidade abaixo do avanço físico já medido.');return;}changeTask({...item.task,quantity:q});setError('');}}/></label><div className="rounded-xl bg-white/5 p-2.5"><p className="text-[10px] text-slate-400">Horas-homem totais</p><strong className="text-sm">{fmt(item.totalHH,3)} HH</strong></div></div>
         {current.scheduleMode==='dependencias'&&<div className="rounded-xl border border-white/10 p-3"><p className="text-[11px] font-semibold text-slate-200">Atividades predecessoras</p><p className="mt-1 text-[10px] text-slate-500">Sem predecessoras = pode começar no início da obra. O sistema bloqueia ciclos e dependências inválidas.</p><div className="mt-2 max-h-40 space-y-1 overflow-y-auto">{current.tasks.filter(t=>t.id!==item.task.id).length===0?<span className="text-[10px] text-slate-500">Nenhuma outra etapa.</span>:current.tasks.filter(t=>t.id!==item.task.id).map(t=><label key={t.id} className="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" checked={(item.task.dependencies||[]).includes(t.id)} onChange={e=>changeTask({...item.task,dependencies:e.target.checked?[...new Set([...(item.task.dependencies||[]),t.id])]:(item.task.dependencies||[]).filter(id=>id!==t.id)})}/>{t.composition.code} · {t.composition.description.slice(0,62)}</label>)}</div></div>}
         {attached&&<label className="block text-[11px] text-slate-400">Item financeiro correspondente no orçamento (opcional)<select className={`${control} mt-1`} value={item.task.quoteItemId||''} onChange={e=>changeTask({...item.task,quoteItemId:e.target.value||undefined})}><option value="">Sem correspondência financeira</option>{attached.items.map(q=><option key={q.id} value={q.id}>{q.name} · {fmt(q.quantity)} {q.unit} · R$ {fmt(q.totalPrice)}</option>)}</select><span className="mt-1 block text-[10px] text-slate-500">Só entra no físico-financeiro se a unidade e a quantidade forem compatíveis, sem associar o mesmo item duas vezes.</span></label>}
-        <div className="space-y-2">{item.labor.map((l,i)=><div className="flex items-center gap-2" key={`${l.code}:${l.role}`}><div className="min-w-0 flex-1"><p className="truncate text-[11px] text-slate-300" title={l.role}>{l.role}</p><p className="text-[10px] text-slate-500">{fmt(l.hours,3)} h necessárias</p></div><label className="w-24 text-[10px] text-slate-400">Pessoas<EditableNumericInput aria-label={`Pessoas: ${l.role}`} integer min={1} max={500} required className={`${control} mt-1`} value={item.task.crew[`${l.code}:${l.role}`]||0} emptyAsBlank onCommit={people=>changeTask({...item.task,crew:{...item.task.crew,[`${l.code}:${l.role}`]:people}})}/></label></div>)}</div>
+        <div className="space-y-2">{item.labor.map((l,i)=><div className="flex items-center gap-2" key={`${l.code}:${l.role}`}><div className="min-w-0 flex-1"><p className="truncate text-[11px] text-slate-300" title={l.role}>{l.role}</p><p className="text-[10px] text-slate-500">{fmt(l.hours/Math.max(item.task.quantity,0.000001),5)} HH/{item.task.composition.unit} × {fmt(item.task.quantity,2)} = {fmt(l.hours,3)} HH</p></div><label className="w-24 text-[10px] text-slate-400">Pessoas<EditableNumericInput aria-label={`Pessoas: ${l.role}`} integer min={1} max={500} required className={`${control} mt-1`} value={item.task.crew[`${l.code}:${l.role}`]||0} emptyAsBlank onCommit={people=>changeTask({...item.task,crew:{...item.task.crew,[`${l.code}:${l.role}`]:people}})}/></label></div>)}</div>
         <div className="space-y-2 rounded-xl border border-white/10 bg-[#141822] p-3">
           <div className="flex items-center justify-between text-[11px]"><strong>Execução física comprovada por medições</strong><span>{fmt(measuredQuantity(item.task),3)} / {fmt(item.task.quantity,3)} {item.task.composition.unit} ({fmt(progressPercent(item.task)||0,1)}%)</span></div>
           <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{width:`${progressPercent(item.task)||0}%`}}/></div>
@@ -773,7 +807,7 @@ export const ScheduleView:React.FC=()=>{
           <button type="button" onClick={()=>recordMeasurement(item.task)} className="w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300">Registrar quantidade realmente executada</button>
           {(item.task.progress?.length||0)>0&&<div className="space-y-1 border-t border-white/10 pt-2">{(item.task.progress||[]).map(m=><div key={m.id} className="flex justify-between gap-2 text-[10px] text-slate-400"><span>{m.date.split('-').reverse().join('/')} · {fmt(m.quantity,3)} {item.task.composition.unit}{m.note?` · ${m.note}`:''}</span><span className="text-emerald-400">Registrado</span></div>)}</div>}
         </div>
-        {item.days===null?<div className="rounded-lg bg-amber-500/10 p-2 text-[11px] text-amber-200">{item.warnings.join(' ')||'Revise os dados.'}</div>:<div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 p-2 text-[11px] text-emerald-200"><CheckCircle2 size={14}/>{item.days} dia(s) útil(eis) · {item.start?.split('-').reverse().join('/')} → {item.end?.split('-').reverse().join('/')}</div>}
+        {item.days===null?<div className="rounded-lg bg-amber-500/10 p-2 text-[11px] text-amber-200">{item.warnings.join(' ')||'Revise os dados.'}</div>:<div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 p-2 text-[11px] text-emerald-200"><CheckCircle2 size={14}/>{item.days} dia(s) útil(eis) · produtividade média planejada de {fmt(item.task.quantity/item.days,2)} {item.task.composition.unit}/dia · {item.start?.split('-').reverse().join('/')} → {item.end?.split('-').reverse().join('/')}</div>}
       </article>)}
       </section>
       <section className={`${tile} space-y-3 p-4`}><h2 className="text-sm font-bold">Cronograma físico-financeiro — itens vinculados</h2><p className="text-[11px] text-slate-400">Valor previsto das etapas expressamente vinculadas aos itens da proposta versus valor proporcional às quantidades efetivamente medidas. Não representa faturamento, emissão de nota, contas a receber ou pagamento.</p>
@@ -788,7 +822,8 @@ export const ScheduleView:React.FC=()=>{
         <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-sm font-bold"><BarChart3 size={17} style={{color:theme.primaryColor}}/> Calendário da obra — dia a dia</h2><p className="mt-1 text-[11px] text-slate-400">Cada coluna identifica um <strong>dia útil com a data real</strong>. As faixas laranja mostram em quais dias cada serviço está previsto. Sábados, domingos e datas não úteis informadas são excluídos.</p></div>
           {pageCount>1&&<div className="flex items-center gap-2 text-[11px]"><button type="button" disabled={safeGanttPage===0} onClick={()=>setGanttPage(p=>Math.max(0,p-1))} className="rounded-lg border border-white/15 px-3 py-2 text-slate-100 disabled:opacity-30">← Dias anteriores</button><span className="whitespace-nowrap text-slate-400">Bloco {safeGanttPage+1} de {pageCount}</span><button type="button" disabled={safeGanttPage===pageCount-1} onClick={()=>setGanttPage(p=>Math.min(pageCount-1,p+1))} className="rounded-lg border border-white/15 px-3 py-2 text-slate-100 disabled:opacity-30">Próximos dias →</button></div>}
         </div>
-        {report.workingDays!==null && ganttDates.length>0 ? <>
+        {ganttDates.length>0 ? <>
+          {report.pending>0&&<p role="status" className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-200">Planejamento parcial: {report.pending} etapa(s) ainda não possuem dados suficientes para calcular suas datas. As barras abaixo representam apenas atividades dimensionadas; o prazo final da obra permanece pendente.</p>}
           <div className="rounded-xl border border-white/10 overflow-x-auto" role="region" aria-label="Cronograma Gantt com datas e dias úteis">
             <div className="min-w-[820px]">
               <div className="grid border-b border-white/10 bg-[#1e293b]" style={{gridTemplateColumns:`minmax(210px,240px) repeat(${ganttDates.length},minmax(38px,1fr))`}}>
@@ -801,7 +836,7 @@ export const ScheduleView:React.FC=()=>{
               </div>)}
             </div>
           </div>
-          <p className="text-[10px] text-slate-400">Exibindo de {ganttDates[0].split('-').reverse().join('/')} a {ganttDates[ganttDates.length-1].split('-').reverse().join('/')} · Período total previsto: {report.workingDays} dias úteis, de {timeline[0].split('-').reverse().join('/')} a {report.finishDate?.split('-').reverse().join('/')}. O PDF inclui os quadros de datas e duração de cada etapa.</p>
+          <p className="text-[10px] text-slate-400">Exibindo de {ganttDates[0].split('-').reverse().join('/')} a {ganttDates[ganttDates.length-1].split('-').reverse().join('/')} · Período {report.pending?'parcial visível':'total previsto'}: {report.workingDays??timeline.length} dias úteis, de {timeline[0].split('-').reverse().join('/')} a {visibleFinish?.split('-').reverse().join('/')}. O PDF inclui os quadros de datas e duração de cada etapa.</p>
           <p className="text-[10px] text-amber-300/90">A disponibilidade de profissionais compartilhados entre frentes paralelas não é distribuída automaticamente. Confira as equipes antes de prometer datas ao cliente. Medição realizada não equivale a execução em uma data específica do gráfico.</p>
         </> : <div className="rounded-xl border border-dashed border-white/15 p-4 text-xs text-slate-400">Informe quantidade, coeficientes e equipe por função em todas as etapas para calcular datas e exibir o calendário. Sem esses dados, nenhum prazo é inventado.</div>}
       </section>

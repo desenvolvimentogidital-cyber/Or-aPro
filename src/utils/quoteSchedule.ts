@@ -45,6 +45,35 @@ export function findQuoteSinapiCandidates(
   return ranked.slice(0,Math.min(60,limit)).map(x=>x.entry);
 }
 
+/** Uma profissão deve aparecer uma única vez na equipe, mesmo quando o Analítico
+ * traz a mesma composição auxiliar em várias linhas. Coeficientes são horas
+ * por unidade; nunca porcentagens de custo. */
+export interface LaborDemand {
+  role: string;
+  code: string;
+  coefficient: number;
+  hours: number;
+}
+export function laborDemandForQuantity(composition: SinapiComposition, quantity: number): LaborDemand[] {
+  if (!Number.isFinite(quantity) || quantity <= 0 ||
+      !Array.isArray(composition.labor) || !composition.labor.length || composition.labor.length > 50)
+    throw new Error('Quantidade ou composição analítica inválida.');
+  const grouped = new Map<string, LaborDemand>();
+  for (const line of composition.labor) {
+    if (!line || !line.code?.trim() || !line.role?.trim() ||
+        !Number.isFinite(line.hoursPerUnit) || line.hoursPerUnit <= 0)
+      throw new Error('Esta composição não possui coeficientes de mão de obra válidos.');
+    const key = `${line.code}:${line.role}`;
+    const old = grouped.get(key);
+    const coefficient = (old?.coefficient || 0) + line.hoursPerUnit;
+    const hours = coefficient * quantity;
+    if (!Number.isFinite(coefficient) || !Number.isFinite(hours) || hours <= 0)
+      throw new Error('HH calculadas fora do limite.');
+    grouped.set(key, {code: line.code, role: line.role, coefficient, hours});
+  }
+  return [...grouped.values()];
+}
+
 export interface SuggestedCrew {
   crew: Record<string,number>;
   labor: {role: string; code: string; coefficient: number; hours: number; workers: number}[];
@@ -53,37 +82,29 @@ export interface SuggestedCrew {
   targetDays: number | null;
 }
 
-/** Horas do SINAPI por profissão; quantas pessoas seriam necessárias para o prazo INFORMADO.
- * Prazo ausente usa cenário ilustrativo de 1 profissional por função, sujeito a confirmação.
+/** Estima profissionais por profissão a partir das HH CONSOLIDADAS.
+ * A duração é o maior gargalo profissional, e nunca soma dias de profissões paralelas.
+ * Uma pessoa por função é somente um cenário inicial quando não há prazo-alvo.
  */
 export function simulateCrewForQuote(
   composition: SinapiComposition, quantity: number,
   hoursPerDay: number, efficiency: number, targetDays?: number
 ): SuggestedCrew {
-  if (!Number.isFinite(quantity) || quantity <= 0 ||
-    !Number.isFinite(hoursPerDay) || hoursPerDay <= 0 || hoursPerDay > 24 ||
+  if (!Number.isFinite(hoursPerDay) || hoursPerDay <= 0 || hoursPerDay > 24 ||
     !Number.isFinite(efficiency) || efficiency <= 0 || efficiency > 1 ||
-    (targetDays !== undefined && (!Number.isSafeInteger(targetDays) || targetDays < 1 || targetDays > 10000)) ||
-    !composition.labor.length || composition.labor.length > 50) {
-    throw new Error('Quantidade, jornada, eficiência, prazo ou composição inválidos.');
+    (targetDays !== undefined && (!Number.isSafeInteger(targetDays) || targetDays < 1 || targetDays > 10000))) {
+    throw new Error('Jornada, eficiência ou prazo inválidos.');
   }
+  const demand = laborDemandForQuantity(composition, quantity);
   const crew: Record<string,number> = {};
-  const labor = composition.labor.map(l=>{
-    if (!Number.isFinite(l.hoursPerUnit) || l.hoursPerUnit <= 0) {
-      throw new Error('Esta composição não possui coeficientes de mão de obra válidos.');
-    }
-    const hours = l.hoursPerUnit * quantity;
-    if (!Number.isFinite(hours) || hours <= 0) throw new Error('HH calculadas fora do limite.');
+  const labor = demand.map(l=>{
     const workers = targetDays === undefined ? 1 :
-      Math.ceil(hours/(targetDays*hoursPerDay*efficiency));
-    if (workers > 500 || workers < 1) throw new Error('O prazo exige mais de 500 profissionais por função. Revise a equipe ou o prazo.');
-    const key = `${l.code}:${l.role}`;
-    // Coeficientes da mesma profissão são agregados antes da simulação.
-    crew[key] = (crew[key]||0) + workers;
-    if (crew[key] > 500) throw new Error('Equipe excede 500 profissionais da mesma função.');
-    return {role:l.role,code:l.code,coefficient:l.hoursPerUnit,hours,workers};
+      Math.max(1,Math.ceil(l.hours / (targetDays * hoursPerDay * efficiency)));
+    if (workers > 500) throw new Error('O prazo exige mais de 500 profissionais por função. Revise a equipe ou o prazo.');
+    crew[`${l.code}:${l.role}`] = workers;
+    return {...l, workers};
   });
-  const projectedDays = Math.max(1,...labor.map(l=>Math.ceil(l.hours/(l.workers*hoursPerDay*efficiency))));
-  if(projectedDays > 10000) throw new Error('Duração fora do limite de 10.000 dias úteis.');
+  const projectedDays = Math.max(1,...labor.map(l=>Math.ceil(l.hours / (l.workers * hoursPerDay * efficiency))));
+  if(projectedDays > 10000)throw new Error('Duração fora do limite de 10.000 dias úteis.');
   return {crew,labor,totalHH:labor.reduce((sum,l)=>sum+l.hours,0),projectedDays,targetDays:targetDays??null};
 }

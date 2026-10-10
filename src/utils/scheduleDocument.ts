@@ -1,6 +1,6 @@
 import type {WorkSchedule} from '../types/schedule';
 import type {Quote,CompanySettings} from '../types/index';
-import {estimateSchedule,scheduleWorkdayDates} from './scheduleMath.js';
+import {estimateSchedule,scheduleWorkdayDates,peakCrewDemand} from './scheduleMath.js';
 import {physicalFinancial} from './physicalFinancial.js';
 import {measuredQuantity,progressPercent} from './execution.js';
 import {sinapiOriginLabel} from './sinapiRegional.js';
@@ -15,11 +15,14 @@ const weekdays=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const weekday=(v:string)=>weekdays[new Date(v+'T12:00:00Z').getUTCDay()];
 export function buildScheduleDocument(schedule:WorkSchedule,quote?:Quote,company?:CompanySettings):string {
   const report=estimateSchedule(schedule);
+  const staffing=peakCrewDemand(report);
   const cover=buildScheduleDashboardCover(schedule,quote,company);
   const physical=physicalFinancial(schedule,quote);
   const labels = new Map(schedule.tasks.map((t,i)=>[t.id,`${i+1} · ${t.composition.code}`]));
   // Datas reais: 15 dias úteis por página, com data e dia da semana em cada coluna.
-  const allDays=report.finishDate?scheduleWorkdayDates(schedule.startDate,report.finishDate,schedule.holidays||[]):[];
+  const datedEnd=report.finishDate || report.entries.reduce<string|null>(
+    (max,e)=>e.end&&(!max||e.end>max)?e.end:max,null);
+  const allDays=datedEnd?scheduleWorkdayDates(schedule.startDate,datedEnd,schedule.holidays||[]):[];
   const axisDays=allDays.slice(0,260);
   const windows:string[]=[];
   for(let offset=0;offset<axisDays.length;offset+=15) {
@@ -37,8 +40,8 @@ export function buildScheduleDocument(schedule:WorkSchedule,quote?:Quote,company
 
   const rows=report.entries.map((e,i)=>{
     const deps=(schedule.scheduleMode==='dependencias'?(e.task.dependencies||[]):i?[schedule.tasks[i-1].id]:[]).map(id=>labels.get(id)||'Referência inválida').join(', ');
-    const roles=e.labor.map(l=>`${l.role}: ${fmt(l.hours)} HH / ${l.workers||'equipes não informadas'}`).join(' | ');
-    return `<tbody class="activity"><tr><td>${i+1}</td><td><b>${esc(e.task.composition.code)}</b> — ${esc(e.task.composition.description)}<small>Composição: ${esc(e.task.composition.sourceFile)} · ${esc(sinapiOriginLabel(e.task.composition))}</small></td><td>${fmt(e.task.quantity)} ${esc(e.task.composition.unit)}</td><td>${fmt(e.totalHH)} HH</td><td>${e.days===null?'Pendente':`${e.days} dias úteis`}</td><td>${date(e.start)}</td><td>${date(e.end)}</td><td>${fmt(measuredQuantity(e.task))} ${esc(e.task.composition.unit)}</td></tr><tr class="note"><td></td><td colspan="7"><span>Equipe: ${esc(roles||'Não informada')}</span>${deps?`<span>Predecessoras: ${esc(deps)}</span>`:''}${e.warnings.length?`<span class="warn">Pendências: ${esc(e.warnings.join(' '))}</span>`:''}</td></tr></tbody>`;
+    const roles=e.labor.map(l=>`${l.role}: ${fmt(l.hours/Math.max(e.task.quantity,0.000001))} HH/${e.task.composition.unit} · ${fmt(l.hours)} HH · ${l.workers||'equipe não informada'} pessoa(s)`).join(' | ');
+    return `<tbody class="activity"><tr><td>${i+1}</td><td><b>${esc(e.task.composition.code)}</b> — ${esc(e.task.composition.description)}<small>Composição: ${esc(e.task.composition.sourceFile)} · ${esc(sinapiOriginLabel(e.task.composition))}</small></td><td>${fmt(e.task.quantity)} ${esc(e.task.composition.unit)}</td><td>${fmt(e.totalHH)} HH</td><td>${e.days===null?'Pendente':`${e.days} dias úteis`}</td><td>${date(e.start)}</td><td>${date(e.end)}</td><td>${fmt(measuredQuantity(e.task))} ${esc(e.task.composition.unit)}</td></tr><tr class="note"><td></td><td colspan="7"><span>Equipe: ${esc(roles||'Não informada')}</span>${e.days===null?'':`<span>Produtividade planejada: ${fmt(e.task.quantity/e.days)} ${esc(e.task.composition.unit)}/dia útil · prazo ${e.days} dia(s) úteis</span>`}${deps?`<span>Predecessoras: ${esc(deps)}</span>`:''}${e.warnings.length?`<span class="warn">Pendências: ${esc(e.warnings.join(' '))}</span>`:''}</td></tr></tbody>`;
   }).join('');
   const reference = [...new Set(schedule.tasks.map(t=>t.composition.reference).filter(Boolean))].join(', ')||'Não informada';
   const refChoice=schedule.referenceSettings||quote?.referenceSettings;
@@ -70,8 +73,9 @@ footer{color:#53677e;border-color:#d1dbe5}
 .pad{padding:10px}
 @media print{html,body{background:#fff;color:#1b3048}body{padding:0}.meta{grid-template-columns:repeat(4,1fr)}.timeline-page{break-before:page;page-break-before:always}.time-row{break-inside:avoid-page}}
 ${cover.css}</style></head><body>${cover.html}<header><h1>Cronograma de execução</h1><div class="sub">${esc(company?.tradeName||company?.name||'Empresa não identificada')} · ${esc(schedule.title)}</div><div class="pill">${esc((schedule.operationalStatus||'planejamento').replace('_',' '))} · planejamento técnico, não promessa contratual</div></header>
-<div class="meta"><div class="card">Orçamento vinculado<b>${esc(quote?.number||'Não informado')}</b>${esc(quote?.clientName||'')}</div><div class="card">Início previsto<b>${date(schedule.startDate)}</b>Término: ${date(report.finishDate)}</div><div class="card">Prazo estimado<b>${report.workingDays===null?'Pendente':`${report.workingDays} dias úteis`}</b>${report.pending} etapa(s) sem cálculo</div><div class="card">Horas-homem<b>${fmt(report.totalHH)} HH</b>SINAPI: ${esc(reference)}</div>${refDetails}<div class="card">Jornada e eficiência<b>${fmt(schedule.hoursPerDay)} h/dia · ${fmt(schedule.efficiency*100)}%</b>Valores definidos para a obra</div><div class="card">Calendário<b>${schedule.scheduleMode==='dependencias'?'Com dependências':'Sequencial'}</b>${(schedule.holidays||[]).length} dia(s) não úteis informados</div></div>
-<section><h2>Etapas, equipes e datas previstas</h2>${report.entries.length?`<table><thead><tr><th style="width:5%">#</th><th>Composição / serviço</th><th style="width:12%">Quantidade</th><th style="width:10%">HH</th><th style="width:11%">Prazo</th><th style="width:11%">Início</th><th style="width:11%">Término</th><th style="width:12%">Medido</th></tr></thead>${rows}</table>`:'<p>Nenhuma etapa cadastrada.</p>'}</section>
+<div class="meta"><div class="card">Orçamento vinculado<b>${esc(quote?.number||'Não informado')}</b>${esc(quote?.clientName||'')}</div><div class="card">Início previsto<b>${date(schedule.startDate)}</b>Término: ${date(report.finishDate)}</div><div class="card">Prazo estimado<b>${report.workingDays===null?'Pendente':`${report.workingDays} dias úteis`}</b>${report.pending} etapa(s) sem cálculo</div><div class="card">Horas-homem<b>${fmt(report.totalHH)} HH</b>SINAPI: ${esc(reference)}</div><div class="card">Pico simultâneo previsto<b>${staffing.roles.length?`${staffing.total} profissionais`:'Pendente'}</b>Somente etapas com equipe e datas definidas</div>${refDetails}<div class="card">Jornada e eficiência<b>${fmt(schedule.hoursPerDay)} h/dia · ${fmt(schedule.efficiency*100)}%</b>Valores definidos para a obra</div><div class="card">Calendário<b>${schedule.scheduleMode==='dependencias'?'Com dependências':'Sequencial'}</b>${(schedule.holidays||[]).length} dia(s) não úteis informados</div></div>
+${report.pending>0? `<div class="hint">Planejamento parcial: ${report.pending} atividade(s) sem prazo. O gráfico abaixo exibe apenas as etapas datadas; o término da obra continua pendente.</div>`:''}
+<section><h2>Equipe necessária por profissão</h2><p class="sub">Pico de cada função ao longo da obra; diferentes funções podem atingir seus picos em dias distintos. Demanda simultânea máxima: ${staffing.roles.length?`${staffing.total} profissionais`:'pendente'}.</p>${staffing.roles.length?`<div class="meta">${staffing.roles.map(l=>`<div class="card"><b>${l.workers} × ${esc(l.role)}</b>Maior demanda da função</div>`).join('')}</div>`:'<p class="sub">Defina a equipe e os coeficientes das etapas para calcular as necessidades.</p>'}</section><section><h2>Etapas, equipes e datas previstas</h2>${report.entries.length?`<table><thead><tr><th style="width:5%">#</th><th>Composição / serviço</th><th style="width:12%">Quantidade</th><th style="width:10%">HH</th><th style="width:11%">Prazo</th><th style="width:11%">Início</th><th style="width:11%">Término</th><th style="width:12%">Medido</th></tr></thead>${rows}</table>`:'<p>Nenhuma etapa cadastrada.</p>'}</section>
 <section><h2>Físico-financeiro dos itens vinculados</h2><div class="totals"><div class="card">Valor vinculado<b>${money(physical.planned)}</b></div><div class="card">Valor proporcional medido<b>${money(physical.measured)}</b></div><div class="card">Avanço dos itens cobertos<b>${physical.percent===null?'Não calculado':`${fmt(physical.percent)}%`}</b></div></div>${warns?`<ul class="sub">${warns}</ul>`:''}</section>
 <div class="hint">Este documento apresenta estimativa baseada em coeficientes SINAPI de mão de obra, quantidades, equipes e jornada declaradas. Sem rateio automático de recursos compartilhados entre etapas paralelas. As datas devem ser conferidas com feriados locais, logística e condições reais da obra. Valor proporcional medido não é faturamento, nota fiscal ou recebimento.</div>
 ${windows.join('')}${moreDays}
