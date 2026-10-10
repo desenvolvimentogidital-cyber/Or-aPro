@@ -21,12 +21,16 @@
     "src/utils/sinapiCosts.ts",
     "src/utils/sinapiFile.ts",
     "src/utils/quoteMath.ts",
+    "src/utils/pricingWorkload.ts",
+    "src/utils/numericEditing.ts",
     "src/utils/bdi.ts",
     "src/utils/dashboardMetrics.ts",
     "src/types/schedule.ts",
     "src/utils/scheduleMath.ts",
     "src/utils/quoteSchedule.ts",
     "src/utils/catalogSinapi.ts",
+    "src/services/sinapiOnline.ts",
+    "src/utils/constructionReferences.ts",
     "src/utils/scheduleDocument.ts",
     "src/utils/scheduleOverview.ts",
     "src/utils/viewMode.ts",
@@ -40,7 +44,8 @@
     "src/utils/sinapi.ts",
     "src/utils/csvExport.ts",
     "src/utils/legacyFixtures.ts",
-    "src/utils/quoteDocument.ts"
+    "src/utils/quoteDocument.ts",
+    "src/utils/quotePdfFile.ts"
   ],
   "include": [],
   "exclude": [

@@ -10,6 +10,7 @@ import {parseSinapiUnitCosts, type SinapiUnitCost} from '../../utils/sinapiCosts
 import {importSinapiOfficialCosts} from '../../utils/sinapiFile';
 import {sinapiUFs,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
 import { usableSinapiComposition } from '../../utils/catalogSinapi';
+import { EditableNumericInput } from '../common/EditableNumericInput';
 
 interface CatalogViewProps {
   initialType?: ItemType;
@@ -95,7 +96,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     e.preventDefault();
     if (!name.trim()) return;
     if (sinapiNeedsSalePrice && (!Number.isFinite(price)||price<=0)) {window.alert('Defina um preço de VENDA maior que zero. O valor SINAPI importado é apenas o custo de referência.');return;}
-    if (cost.trim() !== '' && (!Number.isFinite(Number(cost)) || Number(cost) < 0)) { window.alert('Informe um custo válido ou deixe o campo em branco.'); return; }
+    if (cost.trim() !== '' && (!Number.isFinite(Number(cost.trim().replace(',','.'))) || Number(cost.trim().replace(',','.')) < 0)) { window.alert('Informe um custo válido ou deixe o campo em branco.'); return; }
     const confirmedCost = cost.trim() !== '';
 
     if (itemToEdit) {
@@ -105,7 +106,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         type,
         category: category.trim() || 'Geral',
         price: Number(price) || 0,
-        cost: confirmedCost ? Number(cost) : undefined,
+        cost: confirmedCost ? Number(cost.trim().replace(',','.')) : undefined,
         costConfirmed: confirmedCost,
         unit,
         laborType: type === 'mao_de_obra' ? laborType : undefined,
@@ -119,7 +120,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         type,
         category: category.trim() || 'Geral',
         price: Number(price) || 0,
-        cost: confirmedCost ? Number(cost) : undefined,
+        cost: confirmedCost ? Number(cost.trim().replace(',','.')) : undefined,
         costConfirmed: confirmedCost,
         unit,
         laborType: type === 'mao_de_obra' ? laborType : undefined,
@@ -306,6 +307,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => openEditModal(item)}
+                      aria-label={`Editar ${item.name}`}
                       className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -454,13 +456,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
                     Preço de Venda (R$) *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={price || ''}
-                    onChange={e => setPrice(parseFloat(e.target.value) || 0)}
+                  <EditableNumericInput
+                    min={0} required
+                    value={price} emptyAsBlank
+                    onCommit={setPrice}
                     placeholder="0.00"
                     className="w-full bg-[#1b202c] text-sm text-white px-3.5 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-white/30 font-mono font-bold"
                   />
@@ -470,9 +469,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                     Custo direto do item (R$)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
+                    inputMode="decimal"
                     value={cost}
                     onChange={e => setCost(e.target.value)}
                     placeholder="Deixe vazio se desconhecido"
