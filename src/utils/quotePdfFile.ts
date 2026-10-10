@@ -153,21 +153,35 @@ export function buildQuotePdf({quote,company,client}:{quote:Quote;company:Compan
   };
   header();
   if(!shown.length){text(p,'Nenhum item visível segundo as opções do orçamento.',M+8,p.y+15,9,false,MUTED);p.y+=40;}
-  for(const item of shown){
-    const description=wrap(item.name,vis.showQuantities?270:vis.showUnitPrices?345:480,9.4,100);
-    const rowHeight=Math.max(34,description.length*13+12);
-    if(p.y+rowHeight>H-66){p=newPage(pages,quote.number,companyName);title(p,'ITENS DA PROPOSTA (continuação)');header();}
-    if((shown.indexOf(item)%2)===0)rect(p,M,p.y,W-2*M,rowHeight,PALE);
-    for(let j=0;j<description.length;j++)text(p,description[j],M+8,p.y+9+j*13,9.4,j===0,INK);
-    if(vis.showQuantities){
-      right(p,fmt(item.quantity),379,p.y+9,9,false,INK);
-      right(p,item.unit,421,p.y+9,9,false,MUTED);
+  for(const [index,item] of shown.entries()){
+    // Divide descrições longas entre páginas, sem recortar texto fora do A4.
+    const remaining=wrap(item.name,vis.showQuantities?270:vis.showUnitPrices?345:480,9.4,800);
+    let first=true;
+    while(remaining.length){
+      if(p.y+34>H-66){
+        p=newPage(pages,quote.number,companyName);
+        title(p,'ITENS DA PROPOSTA (continuação)');
+        header();
+      }
+      const maxLines=Math.max(1,Math.floor((H-66-p.y-12)/13));
+      const part=remaining.splice(0,maxLines);
+      const rowHeight=Math.max(34,part.length*13+12);
+      if(index%2===0)rect(p,M,p.y,W-2*M,rowHeight,PALE);
+      for(let j=0;j<part.length;j++)text(p,part[j],M+8,p.y+9+j*13,9.4,first&&j===0,INK);
+      if(first){
+        if(vis.showQuantities){
+          right(p,fmt(item.quantity),379,p.y+9,9,false,INK);
+          right(p,item.unit,421,p.y+9,9,false,MUTED);
+        }
+        if(vis.showUnitPrices){
+          right(p,money(item.unitPrice),491,p.y+9,8.5,false,INK);
+          right(p,money(item.totalPrice),W-M-7,p.y+9,8.5,true,INK);
+        }
+      }
+      p.y+=rowHeight;
+      line(p,M,p.y,W-M,p.y,LINE,.3);
+      first=false;
     }
-    if(vis.showUnitPrices){
-      right(p,money(item.unitPrice),491,p.y+9,8.5,false,INK);
-      right(p,money(item.totalPrice),W-M-7,p.y+9,8.5,true,INK);
-    }
-    p.y+=rowHeight;line(p,M,p.y,W-M,p.y,LINE,.3);
   }
   p.y+=14;
   const totals=[
