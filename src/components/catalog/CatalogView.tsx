@@ -1,4 +1,8 @@
 import React, { useState } from 'react';
+import {SinapiReferencePicker} from './SinapiReferencePicker';
+import type {SinapiComposition} from '../../types/schedule';
+import {categoryLabel} from '../../utils/sinapiCategories';
+import {withSinapiProvenance} from '../../utils/sinapiRegional';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { Plus, Search, Wrench, Boxes, Briefcase, Trash2, Edit3, X, Zap } from 'lucide-react';
@@ -17,7 +21,7 @@ interface CatalogViewProps {
 }
 
 export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
-  const { catalog, addCatalogItem, updateCatalogItem, deleteCatalogItem } = useApp();
+  const { catalog, company, addCatalogItem, updateCatalogItem, deleteCatalogItem } = useApp();
   const { theme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<'todos' | ItemType>(initialType || 'todos');
@@ -32,6 +36,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const [sinapiNeedsSalePrice,setSinapiNeedsSalePrice]=useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<CatalogItem | null>(null);
+  const [selectedSinapi,setSelectedSinapi]=useState<SinapiComposition|null>(null);
+  const [showSinapiPicker,setShowSinapiPicker]=useState(false);
+  const [sinapiServiceUF,setSinapiServiceUF]=useState<SinapiUF|''>(
+    sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:'');
+  const [sinapiServiceRegime,setSinapiServiceRegime]=useState<SinapiRegime|''>('');
 
   // Form states
   const [name, setName] = useState('');
@@ -64,7 +73,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   });
 
   const openAddModal = (defaultType?: ItemType) => {
-    setItemToEdit(null);setSinapiNeedsSalePrice(false);
+    setItemToEdit(null);setSinapiNeedsSalePrice(false);setSelectedSinapi(null);
+    setShowSinapiPicker(defaultType==='servico'||activeTab==='servico');
     setName('');
     setType(defaultType || (activeTab === 'todos' ? 'material' : activeTab));
     setCategory('');
@@ -78,7 +88,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   };
 
   const openEditModal = (item: CatalogItem) => {
-    setSinapiNeedsSalePrice(false);
+    setSinapiNeedsSalePrice(false);setSelectedSinapi(item.sinapiComposition||null);
+    setSinapiServiceUF(item.sinapiComposition?.uf|| (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
+    setSinapiServiceRegime(item.sinapiComposition?.regime||'');
+    setShowSinapiPicker(false);
     setItemToEdit(item);
     setName(item.name);
     setType(item.type);
@@ -95,7 +108,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (sinapiNeedsSalePrice && (!Number.isFinite(price)||price<=0)) {window.alert('Defina um preço de VENDA maior que zero. O valor SINAPI importado é apenas o custo de referência.');return;}
+    if (sinapiNeedsSalePrice && (!Number.isFinite(price)||price<=0)) {window.alert('Informe um preço de VENDA maior que zero. A tabela de HH não contém preços.');return;}
+    if (selectedSinapi && (!sinapiServiceUF||!sinapiServiceRegime)) {
+      window.alert('Selecione a UF da obra e o regime de encargos para salvar a composição SINAPI.');return;
+    }
+    let analytical=selectedSinapi||undefined;
+    if(analytical)try{analytical=withSinapiProvenance(analytical,{
+      reference:analytical.reference||'',uf:sinapiServiceUF as SinapiUF,regime:sinapiServiceRegime as SinapiRegime
+    });}catch(err){window.alert(err instanceof Error?err.message:'Referência SINAPI inválida.');return;}
     if (cost.trim() !== '' && (!Number.isFinite(Number(cost.trim().replace(',','.'))) || Number(cost.trim().replace(',','.')) < 0)) { window.alert('Informe um custo válido ou deixe o campo em branco.'); return; }
     const confirmedCost = cost.trim() !== '';
 
@@ -111,7 +131,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         unit,
         laborType: type === 'mao_de_obra' ? laborType : undefined,
         description: description.trim(),
-        imageUrl: imageUrl || undefined
+        imageUrl: imageUrl || undefined,
+        sinapiComposition:type==='servico'?analytical:undefined
       });
     } else {
       const newItem: CatalogItem = {
@@ -125,11 +146,36 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         unit,
         laborType: type === 'mao_de_obra' ? laborType : undefined,
         description: description.trim(),
-        imageUrl: imageUrl || undefined
+        imageUrl: imageUrl || undefined,
+        sinapiComposition:type==='servico'?analytical:undefined
       };
       addCatalogItem(newItem);
     }
     setIsModalOpen(false);
+  };
+
+  const prepareSinapiReference=(composition:SinapiComposition)=>{
+    // Uma mesma composição não deve criar itens iguais repetidamente.
+    const known=catalog.find(c=>c.type==='servico' &&
+      c.sinapiComposition?.code===composition.code &&
+      c.sinapiComposition?.reference===composition.reference);
+    if(known)openEditModal(known);
+    else {
+      setItemToEdit(null);
+      setName(`SINAPI ${composition.code} · ${composition.description}`);
+      setType('servico');
+      setUnit(composition.unit);
+      setCategory(categoryLabel(composition));
+      setPrice(0);
+      setCost('');
+      setDescription(`Composição analítica SINAPI ${composition.code}, competência ${composition.reference}. Fonte: ${composition.sourceFile}. Coeficientes HH conforme documento; custo e preço comercial não informados.`);
+      setImageUrl('');
+      setSelectedSinapi(composition);
+      setSinapiServiceUF(sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:'');
+      setSinapiServiceRegime('');
+      setSinapiNeedsSalePrice(true);
+      setShowSinapiPicker(false);
+    }
   };
 
   const readSinapiCostCSV=async(file?:File)=>{
@@ -192,6 +238,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
           </div>}
         </>}
       </section>
+      {(activeTab==='servico'||activeTab==='todos')&&
+        <div className="rounded-2xl border border-sky-500/25 p-3">
+          <p className="text-xs text-slate-200">Para incluir qualquer serviço da tabela SINAPI, abra o cadastro e escolha a composição analítica. Os serviços já cadastrados continuam aparecendo abaixo.</p>
+          <button type="button" onClick={()=>openAddModal('servico')} className="mt-2 min-h-11 w-full rounded-lg bg-sky-700 px-3 text-xs font-bold text-white">
+            <Plus size={14} className="mr-2 inline"/> Adicionar serviço da tabela SINAPI
+          </button>
+        </div>}
       {/* Search Input */}
       <div className="relative">
         <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -329,7 +382,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       {/* Modal Add / Edit */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#141822] border border-white/10 rounded-2xl w-full max-w-md p-5 shadow-2xl animate-in zoom-in-95">
+          <div className="bg-[#141822] border border-white/10 rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-4 sm:p-5 shadow-2xl animate-in zoom-in-95">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-white">
                 {itemToEdit ? 'Editar Item' : 'Novo Item no Catálogo'}
@@ -343,6 +396,35 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
             </div>
 
             <form onSubmit={handleSave} className="space-y-3.5">
+              {type==='servico'&&<div className="space-y-2">
+                <button type="button" onClick={()=>setShowSinapiPicker(v=>!v)}
+                  className="min-h-11 w-full rounded-lg border border-sky-500/35 bg-sky-500/10 p-3 text-left text-xs font-semibold text-sky-200">
+                  {showSinapiPicker?'Ocultar busca SINAPI':'Pesquisar todos os serviços SINAPI'}
+                </button>
+                {showSinapiPicker&&<SinapiReferencePicker onSelect={prepareSinapiReference}/>}
+                {selectedSinapi&&<div className="space-y-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+                  <strong className="text-xs text-emerald-200">SINAPI {selectedSinapi.code} · {categoryLabel(selectedSinapi)}</strong>
+                  <p className="text-[11px] text-slate-300">{selectedSinapi.description}</p>
+                  <p className="text-[11px] text-emerald-200">Coeficientes: {selectedSinapi.labor.map(l=>`${l.role}: ${l.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH/${selectedSinapi.unit}`).join(' · ')}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] text-slate-300">UF da obra
+                      <select required aria-label="UF para o serviço SINAPI" value={sinapiServiceUF}
+                        onChange={e=>setSinapiServiceUF(e.target.value as SinapiUF|'')}
+                        className="mt-1 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
+                        <option value="">Selecione</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-[11px] text-slate-300">Encargos declarados
+                      <select required aria-label="Encargos para o serviço SINAPI" value={sinapiServiceRegime}
+                        onChange={e=>setSinapiServiceRegime(e.target.value as SinapiRegime|'')}
+                        className="mt-1 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
+                        <option value="">Selecione</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-amber-200">UF e encargos indicam a referência declarada para a obra, não alteram HH nem certificam o preço regional do arquivo.</p>
+                </div>}
+              </div>}
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">
                   Tipo de Cadastro *
