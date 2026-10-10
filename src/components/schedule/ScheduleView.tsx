@@ -234,7 +234,7 @@ export const ScheduleView:React.FC=()=>{
       for(const file of Array.from(files))reports.push({file:file.name,report:await importSinapiFile(file)});
       const result=mergeSinapiReports(reports.map(f=>f.report));
       const names=reports.map(r=>`${r.file}: ${r.report.compositions.length} composição(ões) analíticas`).join(' | ');
-      const info=`${names}. Total: ${result.compositions.length} composições com HH. ${result.issues.join(' ')}`;
+      const info=`${names}. Total: ${result.compositions.length} serviço(s) com HH identificadas. ${result.issues.join(' ')}`;
       setImportInfo(info);
       setSinapiSession(v=>({...v,compositions:result.compositions,reference:result.reference||v.reference,info}));
       if(!result.compositions.length)throw Error('Nenhuma composição analítica com HH foi encontrada. Confira o arquivo.');
