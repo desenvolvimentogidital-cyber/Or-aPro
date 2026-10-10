@@ -324,6 +324,24 @@ export const ScheduleView:React.FC=()=>{
     setSelectedOnline(null);setCatalogQuoteItemId('');setCatalogQuantity('');setError('');
   };
   const changeTask=(task:ScheduleTask)=>change({tasks:current!.tasks.map(t=>t.id===task.id?task:t)});
+  const completePendingSinapiTask=(task:ScheduleTask,importedComposition:SinapiComposition)=>{
+    if(!current||task.composition.labor.length>0)return;
+    if(task.composition.code!==importedComposition.code ||
+       !sameServiceUnit(task.composition.unit,importedComposition.unit)){
+      setError('A composição analítica deve ter o mesmo código e unidade da etapa pendente.');return;
+    }
+    try{
+      const composition=usableSinapiComposition(importedComposition)?importedComposition:
+        withSinapiProvenance(importedComposition,{
+          reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime
+        });
+      const result=simulateCrewForQuote(composition,task.quantity,current.hoursPerDay,current.efficiency);
+      changeTask({...task,composition,crew:result.crew,
+        notes:(task.notes||'')+' Coeficientes analíticos confirmados na planilha importada; revisar equipe.'});
+      setError('');
+      setImportInfo(`Etapa SINAPI ${composition.code} recebeu coeficientes analíticos reais. Revise a equipe inicial e o prazo simulado.`);
+    }catch(e){setError(e instanceof Error?e.message:'Não foi possível completar o dimensionamento da etapa.');}
+  };
   const recordMeasurement=(task:ScheduleTask)=>{
     const amount=decimalFromInput(measurementInput[task.id]||'');
     const now=new Date();const localDate=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
@@ -582,6 +600,19 @@ export const ScheduleView:React.FC=()=>{
     </section>}
     {printHtml&&<section ref={pdfPreviewRef} role="region" aria-label="Prévia do relatório do cronograma" className={`${tile} scroll-mt-4 space-y-3 p-3 sm:p-4`}><div className="flex flex-wrap items-center justify-between gap-3"><strong className="text-sm text-orange-300">Cronograma pronto para impressão</strong><div className="flex flex-wrap items-center gap-2"><button type="button" className="min-h-11 rounded-lg bg-orange-600 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-500" onClick={()=>{const frame=printableFrameRef.current?.contentWindow;frame?.focus();frame?.print();}}>Imprimir / Salvar PDF</button>{printUrl&&<a href={printUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-lg border border-orange-500/40 px-3 py-2 text-xs font-semibold text-orange-200 hover:bg-orange-500/10">Abrir relatório em nova aba ↗</a>}<button type="button" className="min-h-11 rounded-lg px-3 py-2 text-xs text-slate-300 hover:bg-white/10" onClick={()=>setPrintHtml('')}>Fechar prévia</button></div></div><p className="text-xs leading-relaxed text-slate-300">No computador, use “Imprimir / Salvar PDF”. No celular, caso a impressão integrada não abra, toque em “Abrir relatório em nova aba” e use a função Imprimir → Salvar como PDF do navegador. Nenhum arquivo é enviado a servidores externos.</p><iframe ref={printableFrameRef} title="Prévia do cronograma para PDF" srcDoc={printHtml} className="h-[480px] w-full rounded-xl border border-white/10 bg-white sm:h-[580px]" sandbox="allow-modals allow-same-origin"/></section>}
     {error&&<div role="alert" className="flex gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300"><AlertTriangle size={16}/>{error}</div>}
+    {current&&current.tasks.some(task=>!task.composition.labor.length)&&
+      <section role="region" aria-label="Etapas SINAPI pendentes de horas-homem" className={`${tile} space-y-3 border-amber-500/25 p-4`}>
+        <h2 className="text-sm font-bold text-amber-200">Etapas encontradas online — falta dimensionar HH</h2>
+        <p className="text-xs leading-relaxed text-slate-300">Códigos e descrições podem ser registrados antes do relatório analítico, mas as datas ficam pendentes. Ao importar uma composição com <strong>o mesmo código e unidade</strong>, aplique seus coeficientes para calcular equipe e duração.</p>
+        {current.tasks.filter(task=>!task.composition.labor.length).map(task=>{
+          const source=imported.find(c=>c.code===task.composition.code&&sameServiceUnit(c.unit,task.composition.unit)&&c.labor.length>0);
+          return <div key={task.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 p-3">
+            <span className="min-w-0 text-xs text-slate-200"><strong>SINAPI {task.composition.code}</strong> · {task.composition.description}</span>
+            {source?<button type="button" className="min-h-10 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white" onClick={()=>completePendingSinapiTask(task,source)}>Aplicar coeficientes analíticos</button>
+              :<span className="text-[11px] text-amber-200">Aguardando fonte analítica da mesma composição</span>}
+          </div>;
+        })}
+      </section>}
     {current&&report&&<>
       <div className="grid grid-cols-2 gap-2.5">{stat('Serviços',String(report.entries.length),'Etapas cadastradas')}{stat('Horas-homem',fmt(report.totalHH,2)+' HH','Soma por profissão')}{stat('Prazo previsto',report.workingDays===null?'A definir':`${report.workingDays} dias úteis`,current.scheduleMode==='dependencias'?'Com dependências e frentes paralelas':'Execução sequencial')}{stat('Data final',report.finishDate?new Date(report.finishDate+'T12:00:00').toLocaleDateString('pt-BR'):'A definir',`${report.pending} etapa(s) sem cálculo`)}{stat('Execução medida',physical?.percent===null?'Sem etapas':`${fmt(physical?.percent||0,1)}%`,`${physical?.completed||0} etapa(s) completas`)}</div>
       <section className={`${tile} space-y-3 p-4`}><div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Etapas e equipes</h2><p className="mt-1 text-[11px] text-slate-400">Defina a quantidade real de profissionais por função em cada serviço.</p></div><button type="button" disabled={!report.entries.length} onClick={()=>exportScheduleCSV(current)} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-40"><Download size={14}/> Exportar CSV</button><button type="button" disabled={!report.entries.length} onClick={()=>setPrintHtml(buildScheduleDocument(current,attached,company))} className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 px-3 py-2 text-xs text-orange-200 disabled:opacity-40">Preparar PDF</button></div>
