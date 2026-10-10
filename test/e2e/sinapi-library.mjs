@@ -88,7 +88,7 @@ try{
  await quoteArea.getByRole('button',{name:/Chuveiro/}).click();
 
  const compositionSelect=quoteArea.getByLabel(/Confirme a composição adequada/);
- await compositionSelect.locator('option').filter({hasText:/^100860 /}).first().waitFor({timeout:13000});
+ await compositionSelect.locator('option').filter({hasText:/^100860 /}).first().waitFor({state:'attached',timeout:13000});
  const selectedKey=await compositionSelect.locator('option').filter({hasText:/^100860 /}).first().getAttribute('value');
  assert.ok(selectedKey);
  await compositionSelect.selectOption(selectedKey);
