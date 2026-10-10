@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Upload, Plus, Trash2, HardHat, Clock3, Info, AlertTriangle, Search, FileSpreadsheet, CheckCircle2, BarChart3, Download, ChevronDown, ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
+import { CalendarDays, Upload, Plus, Trash2, HardHat, Clock3, Info, AlertTriangle, Search, FileSpreadsheet, CheckCircle2, BarChart3, Download, ChevronDown, ExternalLink, ArrowUp, ArrowDown, Wrench } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useTheme } from '../../context/ThemeContext';
 import { importSinapiFile } from '../../utils/sinapiFile';
@@ -198,11 +198,13 @@ export const ScheduleView:React.FC=()=>{
     if(current.tasks.length>=180){setError('Limite de 180 etapas atingido. Divida a obra por cronograma.');return;}
     if(current.tasks.some(t=>t.quoteItemId===item.id)){setError('Este item já está vinculado ao cronograma.');return;}
     const key=quoteComposition[item.id]||'';
-    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key);
+    const stored=savedSinapiForQuote(item,catalog);
+    const chosen=imported.find(c=>`${c.code}|${c.unit}`===key)
+      || (stored && `${stored.code}|${stored.unit}`===key?stored:undefined);
     if(!chosen || !sameServiceUnit(chosen.unit,item.unit)){
       setError('Selecione uma composição SINAPI compatível com a unidade do serviço.');return;
     }
-    if(!regionalUF || !regionalRegime || !validCompetence(reference.trim())){
+    if(!usableSinapiComposition(chosen) && (!regionalUF || !regionalRegime || !validCompetence(reference.trim()))){
       setError('Antes de gerar as etapas informe competência, UF e encargos da planilha SINAPI.');return;
     }
     const input=(quoteTargetDays[item.id]||'').trim();
@@ -210,7 +212,8 @@ export const ScheduleView:React.FC=()=>{
     let composition:SinapiComposition;
     let simulated:ReturnType<typeof simulateCrewForQuote>;
     try{
-      composition=withSinapiProvenance(chosen,{reference:reference.trim(),uf:regionalUF,regime:regionalRegime});
+      composition=usableSinapiComposition(chosen)?chosen:
+        withSinapiProvenance(chosen,{reference:reference.trim(),uf:regionalUF as SinapiUF,regime:regionalRegime as SinapiRegime});
       simulated=simulateCrewForQuote(composition,item.quantity,current.hoursPerDay,current.efficiency,days);
     }catch(err){setError(err instanceof Error?err.message:'Não foi possível dimensionar a equipe.');return;}
     const newTask:ScheduleTask={
@@ -218,6 +221,9 @@ export const ScheduleView:React.FC=()=>{
       dependencies:current.scheduleMode==='dependencias' && current.tasks.length?[current.tasks[current.tasks.length-1].id]:[]
     };
     change({tasks:[...current.tasks,newTask]});
+    const origin=item.catalogItemId?catalog.find(c=>c.id===item.catalogItemId):undefined;
+    if(origin?.type==='servico' && (!origin.sinapiComposition || compositionIdentity(origin.sinapiComposition)!==compositionIdentity(composition)))
+      updateCatalogItem({...origin,sinapiComposition:composition});
     setActiveQuoteItem('');setError('');
     setImportInfo(`Etapa ${composition.code} criada e vinculada ao item "${item.name}". Revise a equipe simulada e a disponibilidade real antes de enviar o prazo.`);
   };
@@ -386,15 +392,19 @@ export const ScheduleView:React.FC=()=>{
         <h2 className="flex items-center gap-2 text-sm font-semibold"><HardHat size={17} style={{color:theme.primaryColor}}/> Do orçamento para o cronograma</h2>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-400">Transforme cada item do orçamento em etapa do cronograma. O OrçaPro sugere referências da planilha SINAPI importada, mas você escolhe a composição correta. A equipe é uma <strong>simulação</strong> que deve ser confirmada no canteiro.</p>
       </div>
-      {!imported.length && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima. Sem coeficientes reais de mão de obra não é possível sugerir equipe nem duração.</p>}
+      {!imported.length && !attached.items.some(i=>savedSinapiForQuote(i,catalog)) && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">Primeiro importe a planilha <strong>SINAPI Referência — Analítico</strong>, acima, ou vincule uma composição ao serviço no quadro <strong>Meus serviços → SINAPI</strong>. Sem coeficientes analíticos reais não é possível calcular equipe nem duração.</p>}
       {attached.items.length===0 && <p className="text-xs text-slate-400">O orçamento vinculado ainda não possui itens de serviço.</p>}
       {attached.items.map(item=>{
         const already=current.tasks.find(t=>t.quoteItemId===item.id);
         const expanded=activeQuoteItem===item.id;
         const query=quoteSearch[item.id]||'';
-        const matches=expanded?findQuoteSinapiCandidates(item,imported,query,20):[];
+        const remembered=savedSinapiForQuote(item,catalog);
+        const options=remembered && !imported.some(c=>`${c.code}|${c.unit}`===`${remembered.code}|${remembered.unit}`)
+          ? [...imported,remembered]:imported;
+        const matches=expanded?findCatalogSinapiCandidates(item,options,query,20)
+          .filter(c=>sameServiceUnit(c.unit,item.unit)):[];
         const selectedKey=quoteComposition[item.id]||'';
-        const chosen=imported.find(c=>`${c.code}|${c.unit}`===selectedKey);
+        const chosen=options.find(c=>`${c.code}|${c.unit}`===selectedKey);
         if(chosen && !matches.some(c=>c===chosen))matches.unshift(chosen);
         const targetInput=(quoteTargetDays[item.id]||'').trim();
         const targetDays=targetInput?Number(targetInput):undefined;
@@ -417,7 +427,7 @@ export const ScheduleView:React.FC=()=>{
                 {matches.map(c=><option key={`${c.code}|${c.unit}`} value={`${c.code}|${c.unit}`}>{c.code} · {c.description.slice(0,110)}</option>)}
               </select>
             </label>
-            {!matches.length && imported.length>0 && <p className="text-[11px] text-amber-200">Nenhuma correspondência encontrada. Pesquise pelo código ou por termos da descrição oficial; não será usada uma composição inventada.</p>}
+            {!matches.length && options.length>0 && <p className="text-[11px] text-amber-200">Nenhuma composição com a mesma unidade de “{item.unit}”. Pesquise por código, confira a unidade do orçamento ou selecione o serviço em <strong>Meus serviços → SINAPI</strong> para criar uma etapa independente. Não será atribuído valor financeiro incorreto.</p>}
             {chosen && <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
               <p className="text-[11px] font-semibold text-orange-200">Coeficiente SINAPI por profissão — {chosen.code}</p>
               <p className="text-[11px] text-slate-300">{chosen.description}</p>
