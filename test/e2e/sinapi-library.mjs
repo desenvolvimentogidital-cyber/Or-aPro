@@ -86,14 +86,14 @@ try{
   .getByRole('button',{name:'Cronograma'}).click();
  const quoteArea=page.getByRole('region',{name:'Do orçamento para o cronograma'});
  await quoteArea.getByRole('button',{name:/Chuveiro/}).click();
- await quoteArea.getByRole('status').filter({hasText:'Chuveiro'}).first().waitFor({timeout:15000}).catch(()=>{});
+
  await quoteArea.getByRole('combobox').filter({has:page.locator('option[value="100860|UN"]')}).waitFor({timeout:13000});
  const compositionSelect=quoteArea.locator('select').filter({has:page.locator('option[value="100860|UN"]')});
  await compositionSelect.selectOption('100860|UN');
  await page.getByLabel('UF da referência').selectOption('SP');
  await page.getByLabel('Encargos SINAPI').selectOption('sem_desoneracao');
  await quoteArea.getByText(/HH/).first().waitFor();
- await quoteArea.getByRole('button',{name:/Adicionar.*cronograma|Gerar etapa|Criar etapa/}).first().click();
+ await quoteArea.getByRole('button',{name:'Adicionar etapa com equipe simulada'}).click();
  await page.waitForTimeout(1400);
  assert.equal(state.payload.schedules[0].tasks.length,1,'Deve criar a etapa no cronograma real');
  const task=state.payload.schedules[0].tasks[0];
