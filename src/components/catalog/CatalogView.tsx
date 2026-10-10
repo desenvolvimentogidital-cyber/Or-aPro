@@ -10,6 +10,7 @@ import {parseSinapiUnitCosts, type SinapiUnitCost} from '../../utils/sinapiCosts
 import {importSinapiOfficialCosts} from '../../utils/sinapiFile';
 import {sinapiUFs,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
 import { usableSinapiComposition } from '../../utils/catalogSinapi';
+import { EditableNumericInput } from '../common/EditableNumericInput';
 
 interface CatalogViewProps {
   initialType?: ItemType;
@@ -454,13 +455,10 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
                     Preço de Venda (R$) *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    value={price || ''}
-                    onChange={e => setPrice(parseFloat(e.target.value) || 0)}
+                  <EditableNumericInput
+                    min={0} required
+                    value={price} emptyAsBlank
+                    onCommit={setPrice}
                     placeholder="0.00"
                     className="w-full bg-[#1b202c] text-sm text-white px-3.5 py-2.5 rounded-xl border border-white/10 focus:outline-none focus:border-white/30 font-mono font-bold"
                   />
