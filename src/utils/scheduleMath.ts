@@ -153,7 +153,7 @@ export function peakCrewDemand(report: ScheduleEstimate): {
       if(!Number.isSafeInteger(labor.workers)||labor.workers<1)continue;
       const key=`${labor.code}:${labor.role}`;
       events.push({date:entry.start,key,delta:labor.workers,role:labor.role,code:labor.code});
-      events.push({date:key(next),key,delta:-labor.workers,role:labor.role,code:labor.code});
+      events.push({date:next.toISOString().slice(0,10),key,delta:-labor.workers,role:labor.role,code:labor.code});
     }
   }
   events.sort((a,b)=>a.date.localeCompare(b.date));
