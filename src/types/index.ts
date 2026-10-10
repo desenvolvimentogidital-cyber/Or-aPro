@@ -16,6 +16,7 @@ export interface CatalogItem {
   imageUrl?: string; // Optional real product/service photo uploaded by the user
   cost?: number; // Custo de aquisição para cálculo de margem real
   costConfirmed?: boolean; // Diferencia custo zero declarado do campo não informado
+  sinapiComposition?: import('./schedule').SinapiComposition; // Analítico com HH explicitamente associado pelo operador
 }
 
 export interface QuoteItem {
@@ -30,6 +31,8 @@ export interface QuoteItem {
   costConfirmed?: boolean; // Snapshot da confirmação de custo, inclusive quando zero
   imageUrl?: string; // Snapshot of the real catalog image at quote creation
   laborType?: LaborType;
+  catalogItemId?: string; // ID de origem do catálogo (itens antigos não possuem)
+  sinapiComposition?: import('./schedule').SinapiComposition; // Snapshot opcional da referência confirmada
 }
 
 export interface Client {
