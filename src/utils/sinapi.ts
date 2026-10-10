@@ -29,7 +29,10 @@ function isLabor(description:string, type:string, unit:string):boolean {
   const t = normalized(type), d = normalized(description);
   // A planilha oficial inclui EPI, ferramentas e encargos complementares em H;
   // eles NÃO são profissionais, mesmo quando a descrição contém "OPERADOR".
-  if (/\b(EQUIPAMENTO|MAQUINA|CAMINHAO|BETONEIRA|CHP|CHI|MATERIAL|EPI|FERRAMENTAS|EXAMES|SEGURO|TRANSPORTE|ALIMENTACAO|ENCARGOS COMPLEMENTARES COLETADO)\b/.test(t+' '+d)) return false;
+  // "OPERADOR DE BETONEIRA" e "OPERADOR DE MÁQUINA" são profissões reais:
+  // rejeitar estas palavras só no TIPO equipamento, não na descrição do trabalhador.
+  if (/\b(EQUIPAMENTO|MAQUINA|CAMINHAO|BETONEIRA|CHP|CHI|MATERIAL)\b/.test(t)) return false;
+  if (/\b(EPI|FERRAMENTAS|EXAMES|SEGURO|TRANSPORTE|ALIMENTACAO|ENCARGOS COMPLEMENTARES COLETADO)\b/.test(d)) return false;
   return /\b(MAO DE OBRA|MAO DE OBRA COM ENCARGOS|MO|LABOR)\b/.test(t) || laborKeywords.test(d);
 }
 
