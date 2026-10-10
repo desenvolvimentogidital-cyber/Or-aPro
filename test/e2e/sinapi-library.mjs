@@ -87,9 +87,11 @@ try{
  const quoteArea=page.getByRole('region',{name:'Do orçamento para o cronograma'});
  await quoteArea.getByRole('button',{name:/Chuveiro/}).click();
 
- await quoteArea.getByRole('combobox').filter({has:page.locator('option[value="100860|UN"]')}).waitFor({timeout:13000});
- const compositionSelect=quoteArea.locator('select').filter({has:page.locator('option[value="100860|UN"]')});
- await compositionSelect.selectOption('100860|UN');
+ const compositionSelect=quoteArea.getByLabel(/Confirme a composição adequada/);
+ await compositionSelect.locator('option').filter({hasText:/^100860 /}).first().waitFor({timeout:13000});
+ const selectedKey=await compositionSelect.locator('option').filter({hasText:/^100860 /}).first().getAttribute('value');
+ assert.ok(selectedKey);
+ await compositionSelect.selectOption(selectedKey);
  await page.getByLabel('UF da referência').selectOption('SP');
  await page.getByLabel('Encargos SINAPI').selectOption('sem_desoneracao');
  await quoteArea.getByText(/HH/).first().waitFor();
