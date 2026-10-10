@@ -584,7 +584,7 @@ export const ScheduleView:React.FC=()=>{
               <option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
             </select>
           </div>
-        </div>
+        </div>}
         {catalogSimulation.result&&<p className="rounded-lg bg-[#101e2d] p-2.5 text-xs leading-relaxed text-slate-200">Mão de obra SINAPI: <strong>{fmt(catalogSimulation.result.totalHH,2)} HH</strong> · Prazo simulado: <strong>{catalogSimulation.result.projectedDays} dia(s) útil(eis)</strong> · Equipe inicial: {catalogSimulation.result.labor.map(l=>`${l.workers} × ${l.role}`).join(' + ')}. Confirme a disponibilidade antes de executar.</p>}
         {catalogSimulation.error&&<p role="alert" className="text-xs text-rose-300">{catalogSimulation.error}</p>}
         <button type="button" onClick={appendFromCatalog} disabled={!current||!catalogSimulation.result} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-3 py-3 text-xs font-bold text-white hover:bg-orange-500 disabled:cursor-not-allowed disabled:opacity-40"><Plus size={16}/> {selectedCatalogService?'Adicionar etapa e salvar vínculo SINAPI':'Adicionar composição ao cronograma'}</button>
@@ -664,7 +664,7 @@ export const ScheduleView:React.FC=()=>{
                     </select>
                   </label>
                 </div>
-              </div>
+              </div>}
               {chosen.labor.map(l=><p key={`${l.code}:${l.role}`} className="text-[11px] text-slate-300">{l.role}: <strong>{fmt(l.hoursPerUnit,5)} HH/{chosen.unit}</strong> × {fmt(item.quantity,2)} {item.unit} = {fmt(l.hoursPerUnit*item.quantity,2)} HH</p>)}
               <label className="block text-[11px] text-slate-400">Prazo desejado em dias úteis (opcional; deixe vazio para simular 1 pessoa por profissão)
                 <input className={`${control} mt-1`} type="text" inputMode="numeric" value={quoteTargetDays[item.id]||''} onChange={e=>setQuoteTargetDays(old=>({...old,[item.id]:e.target.value}))} placeholder="Ex.: 10"/>
