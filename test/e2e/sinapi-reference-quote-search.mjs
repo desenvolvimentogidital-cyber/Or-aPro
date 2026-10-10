@@ -103,7 +103,7 @@ try{
  assert.ok((await options.locator('option').allTextContents()).some(x=>x.includes('101494')),
   'Diferentes cabos devem permanecer como opções para escolha humana');
  await options.selectOption(await entry.getAttribute('value'));
- await region.getByText(/ENTRADA DE ENERGIA ELÉTRICA, AÉREA, MONOFÁSICA/).first().waitFor();
+ await region.locator('p').filter({hasText:/ENTRADA DE ENERGIA ELÉTRICA, AÉREA, MONOFÁSICA/}).first().waitFor({state:'visible'});
  // A escolha anterior de SP e encargos é reaproveitada na sessão, com código diferente.
  await region.getByRole('button',{name:'Adicionar etapa com equipe simulada'}).click();
  await page.waitForTimeout(1000);
