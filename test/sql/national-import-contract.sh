@@ -50,12 +50,13 @@ if ! grep -q 'Classificação de insumo publicado divergente' /tmp/orcapro-sinap
   exit 1
 fi
 psql -v ON_ERROR_STOP=1 <<'SQL'
-DO $BEGIN
+DO $$
+BEGIN
  IF (SELECT classification FROM public.orcapro_sinapi_published_inputs
      WHERE reference='09/2026' AND code='1000' AND unit='UN') <> 'OUTROS' THEN
     RAISE EXCEPTION 'Conflito alterou classificação original';
  END IF;
-END $;
+END $$;
 UPDATE public.orcapro_sinapi_published_inputs SET classification='MATERIAL'
  WHERE reference='09/2026' AND code='1000' AND unit='UN';
 SQL
