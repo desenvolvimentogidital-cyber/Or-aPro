@@ -854,7 +854,7 @@ export const QuoteBuilderView: React.FC = () => {
                       <button type="button" aria-pressed={sinapiPricingScope==='complete'}
                         className={`min-h-11 rounded-lg border p-2 text-[11px] font-semibold ${sinapiPricingScope==='complete'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}
                         onClick={()=>{if(sinapiPricingScope==='complete')return;
-                          setSinapiPricingScope('complete');
+                          setSinapiPricingScope('complete');setLocalAdjustment(0);
                           sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
                           setSinapiPrice(0);setSinapiCost(0);setSinapiCostConfirmed(false);
                           setSinapiAddError('');
@@ -862,7 +862,7 @@ export const QuoteBuilderView: React.FC = () => {
                       <button type="button" aria-pressed={sinapiPricingScope==='labor_only'}
                         className={`min-h-11 rounded-lg border p-2 text-[11px] font-semibold ${sinapiPricingScope==='labor_only'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}
                         onClick={()=>{if(sinapiPricingScope==='labor_only')return;
-                          setSinapiPricingScope('labor_only');
+                          setSinapiPricingScope('labor_only');setLocalAdjustment(0);
                           sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
                           const current=laborLookup.status==='ready'&&
                             laborLookup.value?.source.uf===sinapiUF&&
