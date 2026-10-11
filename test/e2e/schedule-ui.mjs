@@ -15,7 +15,15 @@ const schedule={
   ],
   createdAt:'2026-10-09T12:00:00Z',updatedAt:'2026-10-09T12:00:00Z'
 };
-const payload={quotes:[],clients:[],catalog:[],expenses:[],company:{name:'Empresa QA',tradeName:'Empresa QA'},notifications:[],schedules:[schedule],financeEntries:[],lastQuoteNumber:0};
+const store={revision:1,payload:{
+  quotes:[],clients:[],catalog:[],expenses:[],
+  company:{name:'Empresa QA',tradeName:'Empresa QA',
+    pricingWorkDaysPerMonth:22,pricingHoursPerDay:8,
+    employees:[{id:'emp-pedreiro',name:'Pedreiro da equipe',
+      role:person,sinapiCode:'88309',paymentBasis:'hourly',
+      paymentAmount:40,monthlyExtras:0,plannedHoursPerMonth:160}]},
+  notifications:[],schedules:[schedule],financeEntries:[],lastQuoteNumber:0
+}};
 const session={access_token:'qa-ui-only',refresh_token:'qa-ui-only',expires_at:Date.now()+7200000,user:{id:'00000000-0000-4000-8000-000000000001',email:'qa@example.invalid'}};
 try{
   const page=await browser.newPage({viewport:{width:1440,height:900}});
@@ -25,7 +33,18 @@ try{
   await page.route('**/rest/v1/orcapro_workspaces?**',async route=>{
     const headers={'content-type':'application/json','access-control-allow-origin':'*','access-control-allow-headers':'*'};
     if(route.request().method()==='OPTIONS')return route.fulfill({status:204,headers});
-    return route.fulfill({status:200,headers,body:JSON.stringify([{payload,revision:1}])});
+
+    const req=route.request();
+    if(req.method()==='GET')return route.fulfill({status:200,headers,
+      body:JSON.stringify([{payload:store.payload,revision:store.revision}])});
+    const body=JSON.parse(req.postData()||'{}');
+    if(req.method()==='PATCH'&&body.revision===store.revision+1){
+      store.payload=structuredClone(body.payload);
+      store.revision=body.revision;
+      return route.fulfill({status:200,headers,
+        body:JSON.stringify([{revision:store.revision}])});
+    }
+    return route.fulfill({status:409,headers,body:'{"error":"Conflito de revisão"}'});
   });
   await page.goto(base,{waitUntil:'domcontentloaded'});
   const nav=page.getByRole('navigation',{name:'Navegação desktop'});
@@ -52,15 +71,32 @@ try{
   await gantt.getByText('02/11',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Dias anteriores'}).click();
   await gantt.getByText('D1',{exact:true}).waitFor();
+
+  // Alocar pessoa REAL do cadastro sem alterar HH, prazo ou valor da proposta.
+  const taskCrew=page.getByRole('region',{name:'Funcionários alocados na etapa 88309'});
+  await taskCrew.getByRole('checkbox',{name:'Alocar Pedreiro da equipe na função '+person}).check();
+  const forecast=page.getByRole('region',{name:'Custos previstos da equipe na obra'});
+  await forecast.getByText('R$ 6.400,00').waitFor();
+  assert.equal(await page.getByRole('region',{name:'Cronograma Gantt com datas e dias úteis'}).getByText('D1',{exact:true}).count(),1);
+  await page.waitForTimeout(1500);
+  assert.deepEqual(store.payload.schedules[0].tasks[0].employeeAssignments['88309:'+person],['emp-pedreiro']);
+  assert.equal(store.payload.schedules[0].tasks[0].crew['88309:'+person],1);
   await page.getByRole('button',{name:'Preparar PDF'}).click();
   const print=page.frameLocator('iframe[title="Prévia do cronograma para PDF"]');
   await print.getByText('Planejamento visual · dias úteis 1 a 15').waitFor();
   await print.getByText('02/11',{exact:true}).first().waitFor();
+
+  await page.reload({waitUntil:'domcontentloaded'});
+  await nav.getByRole('button',{name:'Cronograma SINAPI'}).click();
+  await page.getByRole('region',{name:'Funcionários alocados na etapa 88309'})
+    .getByRole('checkbox',{name:'Alocar Pedreiro da equipe na função '+person}).waitFor();
+  assert.equal(await page.getByRole('region',{name:'Funcionários alocados na etapa 88309'})
+    .getByRole('checkbox',{name:'Alocar Pedreiro da equipe na função '+person}).isChecked(),true);
   await page.setViewportSize({width:390,height:844});
   await overview.waitFor();
   const overflow = await page.evaluate(()=>document.documentElement.scrollWidth - window.innerWidth);
   assert.ok(overflow <= 2, 'Dashboard mobile nao pode gerar scroll horizontal da pagina: '+overflow);
   await page.screenshot({path:'artifacts/cronograma-mobile.png',fullPage:true}).catch(()=>{});
   assert.deepEqual(errors,[],'Erros JS durante navegacao e geracao de PDF');
-  console.log('PASS Gantt UI 09/10 a 02/11 (feriado e finais de semana excluidos), paginas e iframe PDF');
+  console.log('PASS Gantt dates, employee assignment with hourly forecast, persisted to mock cloud, mobile responsive and PDF');
 }finally{await browser.close();}
