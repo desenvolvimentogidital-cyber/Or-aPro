@@ -24,7 +24,7 @@ export interface SinapiPublishedCompositionCost {
   costs_in_cents:Record<string,Record<string,number>>;
 }
 export interface SinapiCostBreakdown {
-  status:'reconciled'|'partial'|'discrepant';
+  status:'reconciled'|'rounding'|'partial'|'discrepant';
   unit:string;
   uf:string;
   regime:string;
@@ -36,6 +36,7 @@ export interface SinapiCostBreakdown {
   officialTotal:number|null;
   difference:number|null;
   missingCount:number;
+  roundingTolerance:number; // limite estimado e explícito para diferenças de arredondamento por item
   issues:string[];
 }
 const key=(code:string,unit:string)=>code+'|'+unit.trim().toUpperCase();
@@ -65,7 +66,7 @@ export function calculateSinapiCostBreakdown(
   const subtotals:Record<SinapiCostKind,number>={labor:0,material:0,equipment:0,other:0};
   const issues:string[]=[];
   const detailSet=new Set<string>();
-  let missingCount=0,visitedCount=0;
+  let missingCount=0,visitedCount=0,processedItems=0;
   function unknown(message:string){
     missingCount++;
     if(!detailSet.has(message)&&issues.length<25){detailSet.add(message);issues.push(message);}
@@ -81,6 +82,7 @@ export function calculateSinapiCostBreakdown(
     }
     const next=new Set(ancestors);next.add(identity);
     for(const item of items){
+      processedItems++;
       const factor=Number(item.coefficient);
       if(!Number.isFinite(factor)||factor<=0||factor>1e8||
         !/^\d{1,8}$/.test(item.code)||!item.unit){
@@ -115,10 +117,20 @@ export function calculateSinapiCostBreakdown(
   }
   const knownTotal=round(Object.values(subtotals).reduce((sum,v)=>sum+v,0));
   const difference=officialTotal===null?null:round(knownTotal-officialTotal);
+  // Em dados SINAPI reais, a composição auxiliar e seus insumos podem ser
+  // arredondados separadamente a centavos. Não confundir esses centavos com
+  // preço ausente nem apresentar um desvio de R$0,04 como conciliação exata.
+  // Um centavo por item percorrido é uma tolerância conservadora, limitada
+  // a 0,5% do custo integral e, em qualquer caso, a R$ 5,00 por unidade.
+  const roundingTolerance=officialTotal===null?0:round(Math.min(
+    5,officialTotal*0.005,Math.max(0.02,processedItems*0.01)));
   const status=missingCount>0||officialTotal===null?'partial':
-    Math.abs(difference!)<=0.02?'reconciled':'discrepant';
+    Math.abs(difference!)<=0.02?'reconciled':
+    Math.abs(difference!)<=roundingTolerance?'rounding':'discrepant';
   if(officialTotal===null)issues.push('Custo integral da composição não publicado para esta UF/regime.');
+  if(status==='rounding')
+    issues.push('Pequena diferença possivelmente decorrente dos arredondamentos de insumos e composições auxiliares. Verifique o valor oficial.');
   if(status==='discrepant')issues.push('Subtotais não conciliam com o custo integral: confira fontes e regras de arredondamento.');
   return {status,unit:root.unit,uf,regime,
-    ...subtotals,knownTotal,officialTotal,difference,missingCount,issues};
+    ...subtotals,knownTotal,officialTotal,difference,missingCount,roundingTolerance,issues};
 }
