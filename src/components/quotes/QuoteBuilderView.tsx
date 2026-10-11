@@ -860,7 +860,13 @@ export const QuoteBuilderView: React.FC = () => {
                         onClick={()=>{if(sinapiPricingScope==='labor_only')return;
                           setSinapiPricingScope('labor_only');
                           sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
-                          setSinapiPrice(0);setSinapiCost(0);setSinapiCostConfirmed(false);
+                          const current=laborLookup.status==='ready'&&
+                            laborLookup.value?.source.uf===sinapiUF&&
+                            laborLookup.value?.source.regime===sinapiRegime
+                            ?laborLookup.value.unitCost:null;
+                          setSinapiPrice(current??0);
+                          setSinapiCost(current??0);
+                          setSinapiCostConfirmed(current!==null);
                           setSinapiAddError('');
                         }}>Só mão de obra</button>
                     </div>
