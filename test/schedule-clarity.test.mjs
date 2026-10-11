@@ -64,3 +64,18 @@ test('datas inválidas não criam eixo visual',()=>{
   assert.deepEqual(scheduleWorkdayDates('2026-02-30','2026-03-10'),[]);
   assert.deepEqual(scheduleWorkdayDates('2026-10-15','2026-10-01'),[]);
 });
+
+test('funcionários privados e valores de pagamento não aparecem no PDF do cronograma',()=>{
+  const task={...makeTask('protected',4),
+    employeeAssignments:{'88309:PEDREIRO COM ENCARGOS COMPLEMENTARES':['id-func']}}; 
+  const privateName='FUNCIONARIO_IDENTIDADE_PRIVADA_TESTE';
+  const privateCompany={name:'Empresa QA',employees:[{
+    id:'id-func',name:privateName,role:'PEDREIRO COM ENCARGOS COMPLEMENTARES',
+    paymentBasis:'monthly',paymentAmount:17293,monthlyExtras:0,plannedHoursPerMonth:0
+  }]};
+  const html=buildScheduleDocument({...plan,tasks:[task]},undefined,privateCompany);
+  assert.ok(html.includes('104658'));
+  assert.ok(!html.includes(privateName));
+  assert.ok(!html.includes('17293'));
+  assert.ok(!html.includes('id-func'));
+});

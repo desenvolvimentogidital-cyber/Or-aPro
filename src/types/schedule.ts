@@ -27,6 +27,7 @@ export interface ScheduleTask {
   composition: SinapiComposition;
   quantity: number;
   crew: Record<string, number>; // Pessoas POR profissão. Ausência => previsão pendente, não inventar efetivo.
+  employeeAssignments?:Record<string,string[]>; // Funcionários privados alocados por código:função; não altera HH, crew ou PDF público
   notes?: string;
   progress?: TaskProgressEntry[]; // Real measurements; absence means none recorded.
   dependencies?: string[]; // IDs das etapas predecessoras; apenas no modo dependencias

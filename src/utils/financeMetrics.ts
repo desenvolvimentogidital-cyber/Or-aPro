@@ -6,6 +6,7 @@ export function validateEntry(entry: FinanceEntry): void {
   if (entry.type !== 'recebimento' && entry.type !== 'despesa') throw new Error('Tipo de lançamento inválido.');
   if (!validISODate(entry.date)) throw new Error('Data do lançamento inválida.');
   if (!Number.isFinite(entry.amount) || entry.amount <= 0 || entry.amount > 1e12) throw new Error('Valor deve ser maior que zero.');
+  if (entry.scheduleId!==undefined && (typeof entry.scheduleId!=='string'||!entry.scheduleId.trim()||entry.scheduleId.length>200)) throw new Error('Vínculo da obra inválido.');
 }
 export function financeMetrics(entries: FinanceEntry[], quotes: Quote[]) {
   const valid = entries.filter(e => { try {validateEntry(e); return true;} catch{return false;} });

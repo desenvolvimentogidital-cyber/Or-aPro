@@ -33,8 +33,29 @@ export function validateWorkspaceBackup(input:unknown): WorkspaceData {
   for(const item of input.catalog as Record<string,unknown>[])if(typeof item.name!=='string'||!monetary(item.price)||(item.cost!==undefined&&!monetary(item.cost)))throw Error('Itens de catálogo inválidos.');
   for(const s of (input.schedules||[]) as Record<string,unknown>[]) {
     if(typeof s.title!=='string'||!Array.isArray(s.tasks)||s.tasks.length>500)throw Error('Cronograma inválido no backup.');
-    for(const t of s.tasks){if(!object(t)||!object(t.composition)||!Array.isArray(t.composition.labor)||!monetary(t.quantity)||!object(t.crew))throw Error('Etapas do cronograma inválidas.');}
+    for(const t of s.tasks){
+      if(!object(t)||!object(t.composition)||!Array.isArray(t.composition.labor)||!monetary(t.quantity)||!object(t.crew))
+        throw Error('Etapas do cronograma inválidas.');
+      // Alocações pessoais não são obrigatórias: backups antigos continuam válidos.
+      const assigned=t.employeeAssignments;
+      if(assigned!==undefined){
+        if(!object(assigned)||Object.keys(assigned).length>50)
+          throw Error('Alocação de funcionários inválida no backup.');
+        for(const [role,ids] of Object.entries(assigned)){
+          if(role.length<3||role.length>200||!Array.isArray(ids)||ids.length>25||
+             !ids.every(id=>typeof id==='string'&&id.length>=1&&id.length<=200)||
+             new Set(ids).size!==ids.length)
+            throw Error('Alocação de funcionários inválida no backup.');
+        }
+      }
+    }
   }
-  for(const e of (input.financeEntries||[]) as Record<string,unknown>[]){if(!monetary(e.amount)||Number(e.amount)<=0||!['recebimento','despesa'].includes(String(e.type)))throw Error('Lançamentos financeiros inválidos.');}
+  for(const e of (input.financeEntries||[]) as Record<string,unknown>[]){
+    if(!monetary(e.amount)||Number(e.amount)<=0||
+       !['recebimento','despesa'].includes(String(e.type))||
+       (e.scheduleId!==undefined&&(typeof e.scheduleId!=='string'||
+          e.scheduleId.trim().length<1||e.scheduleId.length>200)))
+      throw Error('Lançamentos financeiros inválidos.');
+  }
   return input as unknown as WorkspaceData;
 }
