@@ -40,8 +40,12 @@ export function compareWorkFinance(
     const received=records.filter(e=>e.type==='recebimento');
     const spent=records.filter(e=>e.type==='despesa');
     const missing=quote?.items.filter(item=>
+      // Dados históricos/importados podem conter quantidades inválidas. Não
+      // permitir NaN/Infinity ou custo negativo no resumo gerencial da obra.
+      !Number.isFinite(item.quantity)||item.quantity<=0||
       item.unitCost===undefined||item.unitCost===null||!Number.isFinite(item.unitCost)||
-      item.unitCost<0||!(item.costConfirmed===true || item.costConfirmed===undefined && item.unitCost>=0))||[];
+      item.unitCost<0||!Number.isFinite(item.quantity*item.unitCost)||
+      !(item.costConfirmed===true || item.costConfirmed===undefined && item.unitCost>=0))||[];
     const known=quote?.items.filter(item=>!missing.includes(item))||[];
     const directCostKnown=known.reduce((sum,item)=>sum+item.unitCost!*item.quantity,0);
     // quoteId sozinho não garante a qual obra pertence (pode haver múltiplos cronogramas).

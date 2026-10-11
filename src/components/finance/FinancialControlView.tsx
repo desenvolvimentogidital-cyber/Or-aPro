@@ -119,7 +119,7 @@ export const FinancialControlView: React.FC=()=>{
             card('Proposta vinculada',workSummary.plannedSale,
               `Proposta ${workSummary.quoteNumber||''} · ${workSummary.quoteStatus||''} (não é recebido)`)}
           {card('Custos diretos conhecidos',workSummary.directCostKnown,
-            `${workSummary.directCostCoveredItems} item(ns) com custo informado; não é gasto realizado`)}
+            `${workSummary.directCostCoveredItems} item(ns) com custo e quantidade válidos; não é gasto realizado`)}
           {card('Recebido nesta obra',workSummary.actualReceived,
             `${workSummary.receivedMovements} recebimento(s) registrados`)}
           {card('Despesas pagas nesta obra',workSummary.actualSpent,
@@ -130,7 +130,7 @@ export const FinancialControlView: React.FC=()=>{
           <strong className="text-base">{fmt(workSummary.actualCashBalance)}</strong>
         </div>
         {workSummary.plannedSale===null&&<p className="text-[11px] text-amber-200">Sem proposta vinculada. O valor de venda previsto não está disponível.</p>}
-        {workSummary.directCostMissingItems>0&&<p className="text-[11px] text-amber-200">Custos previstos parciais: {workSummary.directCostMissingItems} item(ns) do orçamento sem custo confirmado. Não é possível estimar um lucro confiável.</p>}
+        {workSummary.directCostMissingItems>0&&<p className="text-[11px] text-amber-200">Custos previstos parciais: {workSummary.directCostMissingItems} item(ns) do orçamento com custo pendente ou quantidade inválida. Não é possível estimar um lucro confiável.</p>}
         {workSummary.unassignedQuoteMovements>0&&<p className="text-[11px] text-amber-200">
           Há {workSummary.unassignedQuoteMovements} lançamento(s) de {fmt(workSummary.unassignedQuoteValue)} vinculados ao orçamento, mas sem obra identificada. Eles não entraram nos totais desta obra. Confira no extrato.
         </p>}

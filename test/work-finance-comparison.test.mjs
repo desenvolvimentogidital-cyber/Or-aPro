@@ -60,3 +60,18 @@ test('lançamentos com valor inválido não contaminam o confronto',()=>{
  assert.equal(r.projects[0].actualSpent,100);
  assert.equal(r.invalidEntries,1);
 });
+
+test('custo direto ignora quantidades inválidas, produtos infinitos e preserva custo zero confirmado',()=>{
+ const badQuote={...quote,items:[
+  {...quote.items[0],id:'ok',quantity:2,unitCost:10,costConfirmed:true},
+  {...quote.items[0],id:'no-number',quantity:NaN,unitCost:10,costConfirmed:true},
+  {...quote.items[0],id:'negative',quantity:-3,unitCost:20,costConfirmed:true},
+  {...quote.items[0],id:'infinite-product',quantity:1e308,unitCost:1e308,costConfirmed:true},
+  {...quote.items[0],id:'zero-confirmed',quantity:1,unitCost:0,costConfirmed:true}
+ ]};
+ const r=compareWorkFinance([schedule('s1','q')],[badQuote],[]);
+ assert.equal(r.projects[0].directCostKnown,20);
+ assert.equal(r.projects[0].directCostMissingItems,3);
+ assert.equal(r.projects[0].directCostCoveredItems,2);
+ assert.ok(Number.isFinite(r.projects[0].directCostKnown));
+});
