@@ -644,7 +644,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                              sinapiLookup.cost.source.regime===sinapiServiceRegime?sinapiLookup.cost.unitCost:null)
                           :(laborLookup.value?.source.uf===sinapiServiceUF&&laborLookup.value?.source.regime===sinapiServiceRegime
                              ?laborLookup.value.unitCost:null);
-                        if(base!==null&&base!==undefined){setPrice(sinapiLocalSalePrice(base,value));salePriceEdited.current=true;}
+                        if(base!==null&&base!==undefined){setPrice(sinapiLocalSalePrice(base,value));salePriceEdited.current=false;}
                       }} aria-label="Ajuste comercial local do serviço SINAPI"
                       className="mt-1 w-full min-h-10 rounded-lg border border-white/15 bg-[#0b101a] px-2 text-xs text-white"/>
                   </label>
