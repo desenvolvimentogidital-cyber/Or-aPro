@@ -38,6 +38,7 @@ import { QuotePreviewModal } from '../quotes/QuotePreviewModal';
 import { MoreMenuDrawer } from '../menu/MoreMenuDrawer';
 import { NotificationsDrawer } from '../notifications/NotificationsDrawer';
 import {useSelectNumericOnFocus} from '../../utils/numericEditing';
+import {InstallAppButton} from '../common/InstallAppButton';
 
 export const AppLayout: React.FC = () => {
   useSelectNumericOnFocus();
