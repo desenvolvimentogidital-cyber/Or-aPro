@@ -60,7 +60,7 @@ try{
  await summary.getByLabel('Selecionar obra para comparar custos').selectOption('s1');
  await summary.getByText(/item\(ns\) do orçamento sem custo confirmado/).waitFor();
  await summary.getByText(/lançamento\(s\) de.*75,00.*sem obra identificada/).waitFor();
- assert.ok((await summary.innerText()).includes('R$ 400,00'));
+ assert.match(await summary.innerText(),/R\$\s*400,00/);
  // Real payment for Obra da Vila: budget is selected automatically, never double-count s2.
  await page.getByLabel('Vincular movimentação a uma obra').selectOption('s1');
  assert.equal(await page.getByLabel('Orçamento da movimentação').inputValue(),'quote-1');
@@ -80,14 +80,14 @@ try{
  await page.getByRole('button',{name:'Salvar movimentação real'}).click();
  await waitStore(3);
  const first=await summary.innerText();
- assert.match(first,/R\$ 550,00/);
- assert.match(first,/R\$ 200,00/);
- assert.match(first,/R\$ 350,00/);
+ assert.match(first,/R\$\s*550,00/);
+ assert.match(first,/R\$\s*200,00/);
+ assert.match(first,/R\$\s*350,00/);
  await summary.getByLabel('Selecionar obra para comparar custos').selectOption('s2');
  const second=await summary.innerText();
- assert.match(second,/R\$ 400,00/);
- assert.match(second,/R\$ 0,00/);
- assert.ok(!second.includes('R$ 350,00'),'do not mix cash across two works sharing quote');
+ assert.match(second,/R\$\s*400,00/);
+ assert.match(second,/R\$\s*0,00/);
+ assert.doesNotMatch(second,/R\$\s*350,00/,'do not mix cash across two works sharing quote');
  await page.reload({waitUntil:'domcontentloaded'});
  const again=await open();
  await again.getByLabel('Selecionar obra para comparar custos').selectOption('s1');
