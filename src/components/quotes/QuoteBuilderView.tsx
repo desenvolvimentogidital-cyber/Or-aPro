@@ -1,6 +1,7 @@
 import React, { useEffect,useRef,useState } from 'react';
 import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
 import {SinapiReferencePicker} from '../catalog/SinapiReferencePicker';
+import {SinapiCostBreakdownPanel} from '../catalog/SinapiCostBreakdownPanel';
 import {useSinapiLaborOnlyLookup} from '../../utils/useSinapiLaborOnlyLookup';
 import {sinapiLocalSalePrice} from '../../utils/sinapiLocalSale';
 import type {SinapiComposition} from '../../types/schedule';
@@ -938,6 +939,9 @@ export const QuoteBuilderView: React.FC = () => {
                       </select>
                     </label>
                   </div>
+                  {sinapiUF&&sinapiRegime&&
+                    <SinapiCostBreakdownPanel key={pickedSinapi.code+'|'+sinapiUF+'|'+sinapiRegime}
+                      composition={pickedSinapi} uf={sinapiUF} regime={sinapiRegime}/>}
                   {sinapiPricingScope==='complete'&&sinapiLookup.cost&&laborLookup.status==='ready'&&laborLookup.value?.unitCost!==null&&
                     <div className="rounded-lg border border-sky-500/20 p-2 text-[11px] text-slate-200">
                       <div className="flex justify-between gap-2"><span>Custo completo</span><strong>{formatCurrency(sinapiLookup.cost.unitCost)}</strong></div>
