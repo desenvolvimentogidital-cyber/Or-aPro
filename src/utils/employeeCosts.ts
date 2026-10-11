@@ -24,10 +24,12 @@ export function employeeMonthlyCosts(employees:readonly EmployeeCost[]){
     validateEmployeeCost(e);
     if(e.paymentBasis==='monthly'){
       fixed+=e.paymentAmount+e.monthlyExtras;
-    }else if(e.plannedHoursPerMonth>0){
-      variable+=e.paymentAmount*e.plannedHoursPerMonth+e.monthlyExtras;
     }else{
-      unplannedHourly++;
+      // Custos extras mensais são fixos mesmo em contratos por hora;
+      // o pagamento por horas permanece variável, sem duplicidade.
+      fixed+=e.monthlyExtras;
+      if(e.plannedHoursPerMonth>0)variable+=e.paymentAmount*e.plannedHoursPerMonth;
+      else unplannedHourly++;
     }
   }
   return {fixed:round(fixed),variableEstimate:round(variable),
