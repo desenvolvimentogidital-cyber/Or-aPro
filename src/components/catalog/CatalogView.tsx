@@ -528,7 +528,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                         onChange={e=>{void importSelectedSinapiPrice(e.target.files?.[0]);e.target.value='';}}/>
                     </label>}
                   {inlinePriceProgress&&<p role="status" className="text-[11px] text-sky-200">{inlinePriceProgress}</p>}
-                  {inlinePriceError&&<p role="alert" className="text-[11px] text-rose-200">{inlinePriceError}</p>
+                  {inlinePriceError&&<p role="alert" className="text-[11px] text-rose-200">{inlinePriceError}</p>}
                   <p className="text-[10px] text-amber-200">O custo de referência não contém margem ou BDI comercial. Confira e altere os valores livremente.</p>
                 </div>}
               </div>}
