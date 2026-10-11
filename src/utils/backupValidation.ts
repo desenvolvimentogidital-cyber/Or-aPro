@@ -22,7 +22,7 @@ export function validateWorkspaceBackup(input:unknown): WorkspaceData {
   const staff=input.company.employees;
   if(staff!==undefined){
     ensureRecords(staff,'funcionários',200);
-    for(const e of staff as EmployeeCost[])validateEmployeeCost(e);
+    for(const e of staff as unknown as EmployeeCost[])validateEmployeeCost(e);
   }
   if(input.lastQuoteNumber!==undefined&&(!Number.isSafeInteger(input.lastQuoteNumber)||Number(input.lastQuoteNumber)<0))throw Error('Numeração de orçamentos inválida.');
   for(const q of input.quotes as Record<string,unknown>[]){
