@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# SOMENTE CI: nunca conectar o banco real. O workflow configura banco efêmero.
+set -euo pipefail
+if [[ "$PGHOST" != "127.0.0.1" || "$PGDATABASE" != "orcapro_ci" ]]; then
+  echo "::error::Contrato nacional exige PostgreSQL efêmero do CI"
+  exit 1
+fi
+python3 - <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0,'test')
+from test_sinapi_national_prices import fixture,p
+folder=Path('/tmp/orcapro-sinapi-contract')
+folder.mkdir(exist_ok=True)
+source=folder/'SINAPI_2026_09.xlsx'
+fixture(source)
+rows,report=p.extract(source)
+for kind,items in rows.items():
+    p.csv_file(folder/(kind+'.csv'),items,source.name)
+(folder/'import.sql').write_text(p.sql_import(folder,report['reference']),encoding='utf-8')
+assert report['composition_rows']==10000
+assert report['input_rows']==4000
+PY
+psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
+# Segunda importação comprova idempotência e ausência de preços duplicados.
+psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
+psql -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.orcapro_sinapi_published_unit_costs WHERE reference='09/2026')<>10000
+     OR (SELECT count(*) FROM public.orcapro_sinapi_published_inputs WHERE reference='09/2026')<>4000
+  THEN RAISE EXCEPTION 'Carga nacional incompleta ou não idempotente'; END IF;
+  IF (SELECT costs_in_cents #>> '{sem_desoneracao,PR}'
+      FROM public.orcapro_sinapi_published_unit_costs
+      WHERE reference='09/2026' AND code='100000' AND unit='M2')::integer <>10170
+  THEN RAISE EXCEPTION 'Preço de composição PR incorreto'; END IF;
+  IF (SELECT costs_in_cents ? 'com_desoneracao'
+      FROM public.orcapro_sinapi_published_inputs
+      WHERE reference='09/2026' AND code='1000' AND unit='UN') IS DISTINCT FROM true
+  THEN RAISE EXCEPTION 'Custo de insumos do segundo regime ausente'; END IF;
+END $$;
+SQL
+echo "PASS importação nacional: 27 UFs, dois regimes e repetição idempotente"
