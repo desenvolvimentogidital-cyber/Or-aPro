@@ -52,7 +52,7 @@ export const CompanyEmployeesSection:React.FC=()=>{
     return()=>ac.abort();
   },[session?.user.id,session?.access_token]);
   useEffect(()=>{
-    setReference(null);
+    setReference(null);setError('');
     if(!session||!code||!uf||regime===' '||!/^(0[1-9]|1[0-2])\/20\d{2}$/.test(competence)){
       setLookupStatus('idle');return;
     }
@@ -63,7 +63,8 @@ export const CompanyEmployeesSection:React.FC=()=>{
     return()=>ac.abort();
   },[session?.user.id,session?.access_token,code,uf,regime,competence]);
   const selectedRole=roles.find(r=>r.code===code)?.role||'';
-  const monthlyReference=reference?sinapiMonthlyReference(reference.hourlyCost,schedule):null;
+  const activeRate=reference?.code===code && activeRate.source.uf===uf && activeRate.source.regime===regime && activeRate.source.reference===competence?reference:null;
+  const monthlyReference=activeRate?sinapiMonthlyReference(activeRate.hourlyCost,schedule):null;
   function clear(){
     setEditId('');setName('');setCode('');setCustomRole('');
     setBasis('monthly');setPayment('');setExtras('');setPlanned('');setError('');
@@ -88,11 +89,11 @@ export const CompanyEmployeesSection:React.FC=()=>{
       sinapiCode:code||undefined,paymentBasis:basis,
       paymentAmount:number(payment),monthlyExtras:number(extras,0),
       plannedHoursPerMonth:basis==='hourly'?number(planned,0):0,
-      reference:code&&reference?.source.uf===uf&&reference.source.regime===regime&&
-        reference.source.reference===competence?
-        {code,uf:reference.source.uf,regime:reference.source.regime,
-         competence:reference.source.reference,hourlyCost:reference.hourlyCost,
-         sourceFile:reference.sourceFile}:undefined
+      reference:code&&activeRate?.source.uf===uf&&activeRate.source.regime===regime&&
+        activeRate.source.reference===competence?
+        {code,uf:activeRate.source.uf,regime:activeRate.source.regime,
+         competence:activeRate.source.reference,hourlyCost:activeRate.hourlyCost,
+         sourceFile:activeRate.sourceFile}:undefined
     };
     try{
       if(!ready)throw Error('Aguarde os dados da conta carregarem.');
@@ -109,8 +110,8 @@ export const CompanyEmployeesSection:React.FC=()=>{
       updateCompany({employees:employees.filter(v=>v.id!==e.id)});
   }
   function useReference(){
-    if(!reference){return;}
-    const suggested=basis==='hourly'?reference.hourlyCost:monthlyReference;
+    if(!activeRate){return;}
+    const suggested=basis==='hourly'?activeRate.hourlyCost:monthlyReference;
     if(suggested===null){setError('Configure a jornada mensal antes de calcular uma equivalência de mês.');return;}
     setPayment(String(suggested));setError('');
   }
@@ -160,8 +161,8 @@ export const CompanyEmployeesSection:React.FC=()=>{
       </div>}
       {code&&lookupStatus==='loading'&&<p role="status" className="text-xs text-sky-200">Consultando custo/h oficial da função…</p>}
       {code&&lookupStatus==='missing'&&<p className="text-xs text-amber-200">Sem custo/h desta função para UF, mês e regime. Você pode informar o valor pago ou importar CSD/CCD em Serviços → Custos SINAPI.</p>}
-      {reference&&<div className="space-y-1 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3 text-xs">
-        <strong className="block text-sky-200">Referência SINAPI (custo com encargos): {formatCurrency(reference.hourlyCost)}/h</strong>
+      {activeRate&&<div className="space-y-1 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3 text-xs">
+        <strong className="block text-sky-200">Referência SINAPI (custo com encargos): {formatCurrency(activeRate.hourlyCost)}/h</strong>
         <span className="block text-slate-300">{reference.source.uf} · {reference.source.reference} · {reference.source.regime==='com_desoneracao'?'Com desoneração':'Sem desoneração'}</span>
         <span className="block text-slate-300">Equivalência mensal por jornada informada: {monthlyReference===null?'Informe dias e horas acima':formatCurrency(monthlyReference)}</span>
         <p className="text-[11px] text-amber-200">Referência de CUSTO da composição com encargos, não salário-base oficial nem obrigação trabalhista.</p>
@@ -177,7 +178,7 @@ export const CompanyEmployeesSection:React.FC=()=>{
             value={payment} onChange={e=>setPayment(e.target.value)} placeholder="0,00" required/>
         </label>
       </div>
-      {reference&&<button type="button" onClick={useReference}
+      {activeRate&&<button type="button" onClick={useReference}
         className="min-h-10 w-full rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 text-[11px] font-semibold text-sky-200">
         Usar referência {basis==='monthly'?'mensal estimada':'por hora'} (editável)
       </button>}
