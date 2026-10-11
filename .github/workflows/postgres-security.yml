@@ -38,6 +38,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f test/sql/ci-bootstrap.sql
       - name: Aplicar SQL versionado da aplicacao
         run: psql -v ON_ERROR_STOP=1 -f supabase/schema.sql
+      - name: Endurecer RPC publica com wrappers SECURITY INVOKER
+        run: psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011_public_quote_rpc_private_hardening.sql
       - name: Testar RLS e RPC de propostas
         run: psql -v ON_ERROR_STOP=1 -f test/sql/security-contract.sql
       - name: Publicar preços de exemplo na base efêmera (schema real, nunca produção)

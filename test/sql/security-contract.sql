@@ -3,6 +3,17 @@ BEGIN;
 INSERT INTO auth.users(id) VALUES
  ('00000000-0000-4000-8000-00000000000a'),
  ('00000000-0000-4000-8000-00000000000b');
+DO $rpc_contract$
+BEGIN
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='public' AND p.proname IN ('orcapro_public_quote','orcapro_decide_quote') AND NOT p.prosecdef)<>2 THEN
+ RAISE EXCEPTION 'Public RPC must use SECURITY INVOKER'; END IF;
+ IF (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+ WHERE n.nspname='orcapro_internal' AND p.proname IN ('orcapro_public_quote','orcapro_decide_quote') AND p.prosecdef)<>2 THEN
+ RAISE EXCEPTION 'Privileged RPC implementations must be internal'; END IF;
+ IF has_table_privilege('anon','public.orcapro_shared_quotes','SELECT') THEN
+ RAISE EXCEPTION 'Quote database must remain inaccessible to anonymous callers'; END IF;
+END $rpc_contract$;
 DO $$
 BEGIN
   IF has_table_privilege('anon', 'public.orcapro_workspaces', 'SELECT') OR
