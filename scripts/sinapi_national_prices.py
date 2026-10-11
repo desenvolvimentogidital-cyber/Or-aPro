@@ -182,8 +182,8 @@ def sql_import(folder,reference):
                 SELECT 1 FROM {temp} s JOIN {table} t USING (reference,code,unit)
                 CROSS JOIN LATERAL jsonb_each(t.costs_in_cents) regime
                 CROSS JOIN LATERAL jsonb_each_text(regime.value) uf
-                WHERE s.costs_in_cents #>> ARRAY[regime.key,uf.key] IS NOT NULL
-                AND (s.costs_in_cents #>> ARRAY[regime.key,uf.key])::numeric <> uf.value::numeric
+                WHERE (s.costs_in_cents #>> ARRAY[regime.key,uf.key]) IS NULL
+                   OR (s.costs_in_cents #>> ARRAY[regime.key,uf.key])::numeric <> uf.value::numeric
               ) THEN RAISE EXCEPTION 'Preço publicado divergente em {kind}; revisar manualmente'; END IF;
             END $$;""",
             f"""INSERT INTO {table} ({cols}) SELECT {cols} FROM {temp}
@@ -192,7 +192,8 @@ def sql_import(folder,reference):
                'sem_desoneracao',coalesce({table}.costs_in_cents->'sem_desoneracao','{{}}'::jsonb)||
                                 coalesce(EXCLUDED.costs_in_cents->'sem_desoneracao','{{}}'::jsonb),
                'com_desoneracao',coalesce({table}.costs_in_cents->'com_desoneracao','{{}}'::jsonb)||
-                                coalesce(EXCLUDED.costs_in_cents->'com_desoneracao','{{}}'::jsonb));""",
+                                coalesce(EXCLUDED.costs_in_cents->'com_desoneracao','{{}}'::jsonb)),
+              source_file=EXCLUDED.source_file;""",
             f"SELECT count(*) AS published_{kind} FROM {table} WHERE reference='{reference}';"
         ])
     return '\n'.join(sql+['COMMIT;','-- Dados importados apenas após validação/backup explícitos.'])+'\n'
