@@ -5,7 +5,7 @@ import {validateProvenance} from '../utils/sinapiRegional';
 const url=(import.meta.env.VITE_SUPABASE_URL||'').replace(/\/$/,'');
 const key=import.meta.env.VITE_SUPABASE_ANON_KEY||'';
 export interface SinapiWorkerRole{code:string;role:string;compositions_count:number;}
-export interface WorkerRate {hourlyCost:number;sourceFile:string;origin:'private'|'official';source:SinapiProvenance;}
+export interface WorkerRate {code:string;hourlyCost:number;sourceFile:string;origin:'private'|'official';source:SinapiProvenance;}
 async function get(session:Session,path:string,signal?:AbortSignal):Promise<any>{
   if(!url||!key||!session.access_token||!session.user.id)
     throw Error('Faça login para consultar os profissionais SINAPI.');
@@ -31,7 +31,7 @@ export async function lookupSinapiWorkerHourly(
   if(!Array.isArray(rows))throw Error('Resposta de custos pessoais inválida.');
   const own=rows.find(v=>String(v.unit).toUpperCase()==='H'&&
     Number.isFinite(Number(v.unit_cost))&&Number(v.unit_cost)>0);
-  if(own)return {hourlyCost:Number(own.unit_cost),sourceFile:own.source_file,
+  if(own)return {code,hourlyCost:Number(own.unit_cost),sourceFile:own.source_file,
     origin:'private',source:{...source}};
   const params=new URLSearchParams({select:'unit,costs_in_cents,source_file',
     reference:'eq.'+source.reference,code:'eq.'+code,limit:'10'});
@@ -41,6 +41,6 @@ export async function lookupSinapiWorkerHourly(
     Number.isSafeInteger(v.costs_in_cents?.[source.regime]?.[source.uf]) &&
     v.costs_in_cents[source.regime][source.uf]>0);
   if(!published)return null;
-  return {hourlyCost:published.costs_in_cents[source.regime][source.uf]/100,
+  return {code,hourlyCost:published.costs_in_cents[source.regime][source.uf]/100,
     sourceFile:published.source_file,origin:'official',source:{...source}};
 }
