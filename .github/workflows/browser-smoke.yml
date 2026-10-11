@@ -43,6 +43,8 @@ jobs:
         run: node test/e2e/pricing-workload.mjs
       - name: Funcionários e custos empresariais mensal/horista (Android isolado)
         run: node test/e2e/company-employees.mjs
+      - name: Custos previstos x movimentos reais por obra no Android (mock)
+        run: node test/e2e/work-finance-comparison.mjs
       - name: Edicao numerica Android em catalogo, custos e cronograma
         run: node test/e2e/numeric-editing.mjs
       - name: Compilar regras para integração
