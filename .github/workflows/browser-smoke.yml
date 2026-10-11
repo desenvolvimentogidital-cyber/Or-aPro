@@ -35,6 +35,8 @@ jobs:
           exit 1
       - name: Smoke UI mobile e desktop
         run: node test/e2e/smoke.mjs
+      - name: Instalacao PWA, Android, icones e offline sem cache de dados (isolado)
+        run: node test/e2e/pwa-mobile-install.mjs
       - name: Todos os servicos SINAPI no cadastro e orcamento (Android isolado)
         run: node test/e2e/sinapi-browse-all-services.mjs
       - name: Formacao de preco — dias e horas editaveis e salvos no Android
