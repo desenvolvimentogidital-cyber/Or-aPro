@@ -52,6 +52,19 @@ await page.route('**/rest/v1/rpc/orcapro_browse_sinapi',route=>{
    .map(entry=>({...entry,category:entry.code==='100860'?'hidraulica':'eletrica',total_count:total}));
  return route.fulfill({status:200,headers,body:JSON.stringify(pageData)});
 });
+const consultedCosts=[];
+await page.route('**/rest/v1/orcapro_sinapi_unit_costs?*',route=>{
+ const u=new URL(route.request().url());
+ const code=(u.searchParams.get('code')||'').replace(/^eq\./,'');
+ const uf=(u.searchParams.get('uf')||'').replace(/^eq\./,'');
+ const regime=(u.searchParams.get('regime')||'').replace(/^eq\./,'');
+ const reference=(u.searchParams.get('reference')||'').replace(/^eq\./,'');
+ consultedCosts.push({code,uf,regime,reference});
+ const numeric=code==='91991'?50.72:code==='100860'?172.03:0;
+ return route.fulfill({status:200,headers,body:JSON.stringify(
+   numeric&&uf==='SP'&&regime==='sem_desoneracao'&&reference==='09/2026'?
+   [{unit:'UN',unit_cost:numeric,source_file:'SINAPI_CSD_SP_2026_09.xlsx'}]:[])});
+});
 await page.route('**/rest/v1/rpc/orcapro_sinapi_library_count',route=>
  route.fulfill({status:200,headers,body:'9136'}));
 await page.route('**/rest/v1/rpc/orcapro_find_sinapi',route=>
@@ -77,12 +90,18 @@ try{
  await picker.getByRole('button',{name:/Selecionar SINAPI 91991/}).click();
  await page.getByLabel('Encargos para o serviço SINAPI').selectOption('sem_desoneracao');
  assert.equal(await page.getByLabel('UF para o serviço SINAPI').inputValue(),'SP');
- const price=page.getByPlaceholder('0.00');await price.fill('180');await price.press('Tab');
+ await page.getByText(/Custo importado: R\$\s*50,72/).waitFor({timeout:12000});
+ const price=page.getByPlaceholder('0.00');
+ assert.equal(await price.inputValue(),'50.72','Preço comercial preenche custo inicial importado, pode mudar');
+ assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'50.72','Custo direto preenchido');
+await price.fill('180');await price.press('Tab');
  await page.getByRole('button',{name:'Adicionar ao Catálogo'}).click();
  await page.waitForTimeout(1200);
  assert.equal(fixture.payload.catalog.length,1);
  const registered=fixture.payload.catalog[0];
  assert.equal(registered.price,180);
+ assert.equal(registered.cost,50.72);
+ assert.equal(registered.costConfirmed,true);
  assert.equal(registered.sinapiComposition.code,'91991');
  assert.equal(registered.sinapiComposition.reference,'09/2026');
  assert.equal(registered.sinapiComposition.uf,'SP');
@@ -99,13 +118,23 @@ try{
  await quotePicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('100860');
  await quotePicker.getByRole('button',{name:/Selecionar SINAPI 100860/}).click();
  await page.getByLabel('Encargos da composição SINAPI no orçamento').selectOption('sem_desoneracao');
+ await page.getByText(/Referência importada: R\$\s*172,03/).waitFor({timeout:12000});
  const sale=page.getByLabel('Preço de venda do serviço SINAPI');
+ assert.equal(await sale.inputValue(),'172.03');
+ assert.equal(await page.getByLabel('Custo unitário do serviço SINAPI').inputValue(),'172.03');
+
  await sale.fill('240');await sale.press('Tab');
  await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
  await page.getByText(/SINAPI 100860.*HH referenciais/).waitFor({timeout:13000});
  await page.waitForTimeout(1200);
  assert.equal(fixture.payload.catalog.length,2,'Composição escolhida no orçamento também é salva no catálogo');
- assert.ok(fixture.payload.catalog.some(entry=>entry.sinapiComposition?.code==='100860'),'Novo serviço SINAPI deve ser persistido no catálogo (independentemente da ordenação)');
+ const saved=fixture.payload.catalog.find(entry=>entry.sinapiComposition?.code==='100860');
+ assert.ok(saved,'Novo serviço SINAPI deve ser persistido no catálogo');
+ assert.equal(saved.price,240,'Valor comercial editado prevalece sobre custo oficial');
+ assert.equal(saved.cost,172.03,'Custo real separado do preço de venda');
+ assert.equal(saved.costConfirmed,true);
+ assert.ok(consultedCosts.some(q=>q.code==='91991'&&q.uf==='SP'));
+ assert.ok(consultedCosts.some(q=>q.code==='100860'&&q.uf==='SP'));
  assert.deepEqual(errors,[]);
- console.log('PASS Android: todos 9.136 buscáveis/paginados, 980 elétricos, cadastro com preço declarado e HH, inclusão no orçamento sem preço inventado');
+ console.log('PASS Android: 9.136 composições, custo SINAPI SP CSD auto preenchido, valores editáveis preservados e HH, preço distinto do custo no orçamento');
 }finally{await browser.close();}
