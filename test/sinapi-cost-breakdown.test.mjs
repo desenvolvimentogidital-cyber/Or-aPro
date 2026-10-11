@@ -65,3 +65,32 @@ test('sem custo global publicado sinaliza decomposição não conciliada',()=>{
  assert.equal(r.status,'partial');
  assert.equal(r.officialTotal,null);
 });
+
+test('SINAPI real: centavos de auxiliares não equivalem a divergência grande nem conciliação exata',()=>{
+ // A referência 104596 PR CCD do XLSX tem R$148,29; sua decomposição
+ // integral em insumos sem arredondamentos intermediários soma ~R$148,33.
+ const details=[{code:'104596',unit:'M2',items:[
+  {type:'input',code:'50001',unit:'UN',coefficient:'1',status:'COM PREÇO'},
+  {type:'input',code:'50002',unit:'UN',coefficient:'1',status:'COM PREÇO'},
+  {type:'input',code:'50003',unit:'UN',coefficient:'1',status:'COM PREÇO'},
+  {type:'input',code:'50004',unit:'UN',coefficient:'1',status:'COM PREÇO'},
+  {type:'input',code:'50005',unit:'UN',coefficient:'1',status:'COM PREÇO'}
+ ]}];
+ const parts=[4000,9266,1563,2,2].map((c,i)=>({
+  code:String(50001+i),unit:'UN',
+  classification:i===0?'MAO DE OBRA':i===1?'MATERIAL':'ENCARGOS COMPLEMENTARES',
+  costs_in_cents:prices(c)
+ }));
+ const official={code:'104596',unit:'M2',costs_in_cents:prices(14829)};
+ const estimate=calculateSinapiCostBreakdown({code:'104596',unit:'M2'},U,R,details,parts,official);
+ assert.equal(estimate.knownTotal,148.33);
+ assert.equal(estimate.officialTotal,148.29);
+ assert.equal(estimate.difference,0.04);
+ assert.equal(estimate.roundingTolerance,0.05);
+ assert.equal(estimate.status,'rounding');
+ assert.ok(estimate.issues.some(x=>x.includes('arredondamentos')));
+ const biggerGap=calculateSinapiCostBreakdown({code:'104596',unit:'M2'},U,R,details,parts,{
+  ...official,costs_in_cents:prices(14700)
+ });
+ assert.equal(biggerGap.status,'discrepant');
+});
