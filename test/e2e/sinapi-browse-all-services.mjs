@@ -132,10 +132,9 @@ await price.fill('180');await price.press('Tab');
  await floorPicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
  await floorPicker.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
  await page.getByRole('button',{name:'Material',exact:true}).click();
- assert.equal(await page.getByRole('textbox',{name:/Nome do Item/}).inputValue(),'',
+ assert.equal(await page.getByPlaceholder('Ex: Disjuntor DIN 32A ou Troca de Fiação').inputValue(),'',
    'Trocar para material não pode carregar o nome SINAPI do serviço');
  await page.getByRole('button',{name:'Serviço',exact:true}).click();
- await page.getByRole('button',{name:'Pesquisar todos os serviços SINAPI'}).click().catch(()=>{});
  const floorPickerAgain=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
  await floorPickerAgain.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
  await floorPickerAgain.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
