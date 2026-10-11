@@ -23,6 +23,7 @@
     "src/utils/quoteMath.ts",
     "src/utils/pricingWorkload.ts",
     "src/utils/employeeCosts.ts",
+    "src/utils/sinapiLocalSale.ts",
     "src/utils/numericEditing.ts",
     "src/utils/bdi.ts",
     "src/utils/dashboardMetrics.ts",
