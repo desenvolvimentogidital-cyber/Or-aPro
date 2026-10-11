@@ -172,8 +172,14 @@ export const QuoteBuilderView: React.FC = () => {
   const prepareSinapiForQuote=(c:SinapiComposition)=>{
     setPickedSinapi(c);setSinapiBrowseOpen(false);setSinapiAddError('');
     sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
-    const previously=catalog.find(item=>item.type==='servico' &&
+    const sameCode=catalog.filter(item=>item.type==='servico' &&
       item.sinapiComposition?.code===c.code && item.sinapiComposition?.reference===c.reference);
+    // A biblioteca sempre começa pela composição completa, mesmo quando há
+    // uma versão de mão de obra com preço comercial já cadastrado.
+    const previously=sameCode.find(item=>(item.sinapiPricingScope||'complete')==='complete' &&
+      item.sinapiComposition?.uf===company.state) ||
+      sameCode.find(item=>(item.sinapiPricingScope||'complete')==='complete') ||
+      sameCode[0];
     setSinapiPricingScope(previously?.sinapiPricingScope||'complete');
     setSinapiPrice(previously?.price||0);
     setSinapiCost(previously?.cost||0);
