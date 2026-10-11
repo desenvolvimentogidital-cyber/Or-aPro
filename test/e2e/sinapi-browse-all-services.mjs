@@ -60,7 +60,7 @@ await page.route('**/rest/v1/orcapro_sinapi_unit_costs?*',route=>{
  const regime=(u.searchParams.get('regime')||'').replace(/^eq\./,'');
  const reference=(u.searchParams.get('reference')||'').replace(/^eq\./,'');
  consultedCosts.push({code,uf,regime,reference});
- const numeric=code==='91991'?73.42:code==='100860'?86.78:0;
+ const numeric=code==='91991'?50.72:code==='100860'?172.03:0;
  return route.fulfill({status:200,headers,body:JSON.stringify(
    numeric&&uf==='SP'&&regime==='sem_desoneracao'&&reference==='09/2026'?
    [{unit:'UN',unit_cost:numeric,source_file:'SINAPI_CSD_SP_2026_09.xlsx'}]:[])});
@@ -90,17 +90,17 @@ try{
  await picker.getByRole('button',{name:/Selecionar SINAPI 91991/}).click();
  await page.getByLabel('Encargos para o serviço SINAPI').selectOption('sem_desoneracao');
  assert.equal(await page.getByLabel('UF para o serviço SINAPI').inputValue(),'SP');
- await page.getByText(/Custo importado: R\$\s*73,42/).waitFor({timeout:12000});
+ await page.getByText(/Custo importado: R\$\s*50,72/).waitFor({timeout:12000});
  const price=page.getByPlaceholder('0.00');
- assert.equal(await price.inputValue(),'73.42','Preço comercial preenche custo inicial importado, pode mudar');
- assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'73.42','Custo direto preenchido');
+ assert.equal(await price.inputValue(),'50.72','Preço comercial preenche custo inicial importado, pode mudar');
+ assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'50.72','Custo direto preenchido');
 await price.fill('180');await price.press('Tab');
  await page.getByRole('button',{name:'Adicionar ao Catálogo'}).click();
  await page.waitForTimeout(1200);
  assert.equal(fixture.payload.catalog.length,1);
  const registered=fixture.payload.catalog[0];
  assert.equal(registered.price,180);
- assert.equal(registered.cost,73.42);
+ assert.equal(registered.cost,50.72);
  assert.equal(registered.costConfirmed,true);
  assert.equal(registered.sinapiComposition.code,'91991');
  assert.equal(registered.sinapiComposition.reference,'09/2026');
@@ -118,10 +118,10 @@ await price.fill('180');await price.press('Tab');
  await quotePicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('100860');
  await quotePicker.getByRole('button',{name:/Selecionar SINAPI 100860/}).click();
  await page.getByLabel('Encargos da composição SINAPI no orçamento').selectOption('sem_desoneracao');
- await page.getByText(/Referência importada: R\$\s*86,78/).waitFor({timeout:12000});
+ await page.getByText(/Referência importada: R\$\s*172,03/).waitFor({timeout:12000});
  const sale=page.getByLabel('Preço de venda do serviço SINAPI');
- assert.equal(await sale.inputValue(),'86.78');
- assert.equal(await page.getByLabel('Custo unitário do serviço SINAPI').inputValue(),'86.78');
+ assert.equal(await sale.inputValue(),'172.03');
+ assert.equal(await page.getByLabel('Custo unitário do serviço SINAPI').inputValue(),'172.03');
 
  await sale.fill('240');await sale.press('Tab');
  await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
@@ -131,7 +131,7 @@ await price.fill('180');await price.press('Tab');
  const saved=fixture.payload.catalog.find(entry=>entry.sinapiComposition?.code==='100860');
  assert.ok(saved,'Novo serviço SINAPI deve ser persistido no catálogo');
  assert.equal(saved.price,240,'Valor comercial editado prevalece sobre custo oficial');
- assert.equal(saved.cost,86.78,'Custo real separado do preço de venda');
+ assert.equal(saved.cost,172.03,'Custo real separado do preço de venda');
  assert.equal(saved.costConfirmed,true);
  assert.ok(consultedCosts.some(q=>q.code==='91991'&&q.uf==='SP'));
  assert.ok(consultedCosts.some(q=>q.code==='100860'&&q.uf==='SP'));
