@@ -50,7 +50,7 @@ async function waitStore(count){
 async function open(){
  await page.getByRole('navigation',{name:'Navegação Principal'})
   .getByRole('button',{name:'Mais'}).click();
- await page.getByRole('button',{name:'Financeiro',exact:true}).click();
+ await page.getByRole('button',{name:/Recebimentos e despesas/}).click();
  await page.getByRole('heading',{name:'Controle financeiro real'}).waitFor();
  return page.getByRole('region',{name:'Comparativo financeiro por obra'});
 }
