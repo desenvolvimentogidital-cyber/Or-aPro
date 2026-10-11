@@ -44,7 +44,7 @@ test('branded PNG icons are real square raster images generated without external
 
 test('service worker always fetches data online and never caches private content',()=>{
   assert.match(sw,/request.mode!=='navigate'/);
-  assert.match(sw,/fetch\(request\)\.catch/);
+  assert.match(sw,/fetch\(request,\{cache:'no-store'\}\)\.catch/);
   assert.match(sw,/cache\.add\(OFFLINE\)/);
   assert.doesNotMatch(sw,/cache\.put\(request/);
   assert.doesNotMatch(sw,/addAll\(\['\/'\]/);
