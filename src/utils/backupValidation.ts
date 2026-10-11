@@ -50,6 +50,12 @@ export function validateWorkspaceBackup(input:unknown): WorkspaceData {
       }
     }
   }
-  for(const e of (input.financeEntries||[]) as Record<string,unknown>[]){if(!monetary(e.amount)||Number(e.amount)<=0||!['recebimento','despesa'].includes(String(e.type)))throw Error('Lançamentos financeiros inválidos.');}
+  for(const e of (input.financeEntries||[]) as Record<string,unknown>[]){
+    if(!monetary(e.amount)||Number(e.amount)<=0||
+       !['recebimento','despesa'].includes(String(e.type))||
+       (e.scheduleId!==undefined&&(typeof e.scheduleId!=='string'||
+          e.scheduleId.trim().length<1||e.scheduleId.length>200)))
+      throw Error('Lançamentos financeiros inválidos.');
+  }
   return input as unknown as WorkspaceData;
 }
