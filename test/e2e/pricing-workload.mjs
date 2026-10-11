@@ -55,7 +55,7 @@ try{
   assert.equal(await panel.getByLabel('Dias trabalhados por mês').inputValue(),'');
   assert.equal(await panel.getByLabel('Horas trabalhadas por dia').inputValue(),'');
   await panel.getByText(/Informe os dias trabalhados no mês/).waitFor();
-  assert.equal(await page.getByText('R$ 16.200,00').isVisible(),true);
+  assert.equal(await page.getByText('R$ 16.200,00').first().isVisible(),true);
   assert.equal(await page.getByRole('alert').count(),0,'Sem aviso vermelho antes de informar a jornada');
 
   await panel.getByLabel('Dias trabalhados por mês').fill('22');
