@@ -204,6 +204,21 @@ await price.fill('180');await price.press('Tab');
  assert.equal(saved.price,240,'Valor comercial editado prevalece sobre custo oficial');
  assert.equal(saved.cost,172.03,'Custo real separado do preço de venda');
  assert.equal(saved.costConfirmed,true);
+ // Seleção direta de serviço só mão de obra, sem somar novamente porcelanato.
+ await page.getByRole('button',{name:/Adicionar serviço da tabela SINAPI \(todos os 9.136\)/}).click();
+ const laborQuotePicker=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
+ await laborQuotePicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
+ await laborQuotePicker.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
+ await page.getByRole('button',{name:'Só mão de obra'}).click();
+ await page.getByText(/Estimativa só mão de obra: R\$\s*55,66/).waitFor({timeout:12000});
+ assert.equal(await page.getByLabel('Preço de venda do serviço SINAPI').inputValue(),'55.66');
+ await page.getByLabel('Preço de venda do serviço SINAPI').fill('96');
+ await page.getByLabel('Preço de venda do serviço SINAPI').press('Tab');
+ await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
+ await page.getByText(/SINAPI 104596.*HH referenciais/).waitFor({timeout:12000});
+ assert.equal(fixture.payload.catalog.find(item=>item.id===floorSaved.id).price,230);
+ assert.equal(fixture.payload.catalog.find(item=>item.id===laborOnly.id).price,95,
+   'Orçamento não deve sobrescrever preço do catálogo com venda individual');
  assert.ok(consultedCosts.some(q=>q.code==='91991'&&q.uf==='SP'));
  assert.ok(consultedCosts.some(q=>q.code==='100860'&&q.uf==='SP'));
  assert.deepEqual(errors,[]);
