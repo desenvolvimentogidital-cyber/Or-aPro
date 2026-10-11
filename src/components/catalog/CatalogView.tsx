@@ -238,6 +238,12 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       setInlinePriceError(err instanceof Error?err.message:'Não foi possível importar os valores SINAPI.');
     }finally{setSavingCostFile(false);}
   };
+  const resetRegionalAutoPrice=()=>{
+    // O preço da UF anterior não deve ficar na tela quando a referência muda.
+    // Valores já editados manualmente continuam intocados.
+    if(!salePriceEdited.current)setPrice(0);
+    if(!directCostEdited.current)setCost('');
+  };
   const clearSinapiWhenChangingKind=()=>{
     // Evitar que um serviço de revestimento se torne material/hora avulsa.
     if(selectedSinapi&&!itemToEdit){
@@ -488,14 +494,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   <div className="grid grid-cols-2 gap-2">
                     <label className="text-[11px] text-slate-300">UF da obra
                       <select required aria-label="UF para o serviço SINAPI" value={sinapiServiceUF}
-                        onChange={e=>setSinapiServiceUF(e.target.value as SinapiUF|'')}
+                        onChange={e=>{resetRegionalAutoPrice();setSinapiServiceUF(e.target.value as SinapiUF|'');}}
                         className="mt-1 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
                         <option value="">Selecione</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
                       </select>
                     </label>
                     <label className="text-[11px] text-slate-300">Encargos declarados
                       <select required aria-label="Encargos para o serviço SINAPI" value={sinapiServiceRegime}
-                        onChange={e=>setSinapiServiceRegime(e.target.value as SinapiRegime|'')}
+                        onChange={e=>{resetRegionalAutoPrice();setSinapiServiceRegime(e.target.value as SinapiRegime|'');}}
                         className="mt-1 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
                         <option value="">Selecione</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option>
                       </select>
