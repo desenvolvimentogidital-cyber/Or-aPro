@@ -17,6 +17,7 @@ export interface CatalogItem {
   cost?: number; // Custo de aquisição para cálculo de margem real
   costConfirmed?: boolean; // Diferencia custo zero declarado do campo não informado
   sinapiComposition?: import('./schedule').SinapiComposition; // Analítico com HH explicitamente associado pelo operador
+  sinapiPricingScope?: 'complete' | 'labor_only'; // Serviço completo ou apenas execução (materiais do cliente)
 }
 
 export interface QuoteItem {
@@ -33,6 +34,7 @@ export interface QuoteItem {
   laborType?: LaborType;
   catalogItemId?: string; // ID de origem do catálogo (itens antigos não possuem)
   sinapiComposition?: import('./schedule').SinapiComposition; // Snapshot opcional da referência confirmada
+  sinapiPricingScope?: 'complete' | 'labor_only'; // Snapshot do que foi incluído no fornecimento
 }
 
 export interface Client {

@@ -73,7 +73,10 @@ await page.route('**/rest/v1/orcapro_sinapi_unit_costs?*',route=>{
 await page.route('**/rest/v1/orcapro_sinapi_published_unit_costs?*',route=>{
   const u=new URL(route.request().url());
   const code=(u.searchParams.get('code')||'').replace(/^eq\./,'');
-  const response=code==='104596'?[{
+  const response=code.startsWith('in.')?[
+    {code:'88316',unit:'H',costs_in_cents:{sem_desoneracao:{PR:3278},com_desoneracao:{PR:3112}}},
+    {code:'88256',unit:'H',costs_in_cents:{sem_desoneracao:{PR:4192},com_desoneracao:{PR:3960}}}
+  ]:code==='104596'?[{
     unit:'M2',source_file:'SINAPI_Referência_2026_09.xlsx (CSD/CCD)',
     costs_in_cents:{
       sem_desoneracao:{PR:15151,SP:14713},
@@ -155,6 +158,27 @@ await price.fill('180');await price.press('Tab');
  assert.equal(floorSaved.cost,148.29);
  assert.equal(floorSaved.sinapiComposition.uf,'PR');
  assert.equal(floorSaved.sinapiComposition.regime,'com_desoneracao');
+ // Composição igual, dois fornecimentos distintos: completo x só execução.
+ await page.getByRole('button',{name:'Adicionar serviço da tabela SINAPI'}).click();
+ const laborPicker=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
+ await laborPicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
+ await laborPicker.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
+ await page.getByRole('button',{name:'Somente mão de obra'}).click();
+ await page.getByText(/Mão de obra estimada: R\$\s*55,66/).waitFor({timeout:13000});
+ await page.waitForFunction(()=>document.querySelector('input[placeholder="0.00"]')?.value==='55.66',null,{timeout:12000});
+ assert.equal(await page.getByPlaceholder('0.00').inputValue(),'55.66');
+ assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'55.66');
+ await page.getByPlaceholder('0.00').fill('95');await page.getByPlaceholder('0.00').press('Tab');
+ await page.getByRole('button',{name:'Adicionar ao Catálogo'}).click();
+ await page.waitForTimeout(1100);
+ const laborOnly=fixture.payload.catalog.find(item=>item.sinapiComposition?.code==='104596'&&item.sinapiPricingScope==='labor_only');
+ assert.ok(laborOnly,'Criar item de execução separado do item completo');
+ assert.equal(laborOnly.type,'servico','Serviço continua fornecendo HH para o cronograma');
+ assert.equal(laborOnly.unit,'M2');
+ assert.equal(laborOnly.price,95,'Preço de venda editável de mão de obra');
+ assert.equal(laborOnly.cost,55.66,'Custo por HH não inclui porcelanato');
+ assert.equal(laborOnly.sinapiComposition.labor.length,2);
+ assert.equal(fixture.payload.catalog.find(item=>item.id===floorSaved.id).price,230,'Item completo preservado');
 
  // Orçamento também pode escolher qualquer composição da base global,
  // mesmo sem estar cadastrada no catálogo pessoal.
@@ -175,14 +199,30 @@ await price.fill('180');await price.press('Tab');
  await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
  await page.getByText(/SINAPI 100860.*HH referenciais/).waitFor({timeout:13000});
  await page.waitForTimeout(1200);
- assert.equal(fixture.payload.catalog.length,3,'Composição escolhida no orçamento também é salva no catálogo');
+ assert.equal(fixture.payload.catalog.length,4,'Composição escolhida no orçamento também é salva no catálogo');
  const saved=fixture.payload.catalog.find(entry=>entry.sinapiComposition?.code==='100860');
  assert.ok(saved,'Novo serviço SINAPI deve ser persistido no catálogo');
  assert.equal(saved.price,240,'Valor comercial editado prevalece sobre custo oficial');
  assert.equal(saved.cost,172.03,'Custo real separado do preço de venda');
  assert.equal(saved.costConfirmed,true);
+ // Seleção direta de serviço só mão de obra, sem somar novamente porcelanato.
+ await page.getByRole('button',{name:/Adicionar serviço da tabela SINAPI \(todos os 9.136\)/}).click();
+ const laborQuotePicker=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
+ await laborQuotePicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
+ await laborQuotePicker.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
+ await page.getByRole('button',{name:'Só mão de obra'}).click();
+ await page.getByText(/Estimativa só mão de obra: R\$\s*55,66/).waitFor({timeout:12000});
+ await page.waitForFunction(()=>document.querySelector('input[aria-label="Preço de venda do serviço SINAPI"]')?.value==='55.66',null,{timeout:12000});
+ assert.equal(await page.getByLabel('Preço de venda do serviço SINAPI').inputValue(),'55.66');
+ await page.getByLabel('Preço de venda do serviço SINAPI').fill('96');
+ await page.getByLabel('Preço de venda do serviço SINAPI').press('Tab');
+ await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
+ await page.getByText(/SINAPI 104596.*HH referenciais/).waitFor({timeout:12000});
+ assert.equal(fixture.payload.catalog.find(item=>item.id===floorSaved.id).price,230);
+ assert.equal(fixture.payload.catalog.find(item=>item.id===laborOnly.id).price,95,
+   'Orçamento não deve sobrescrever preço do catálogo com venda individual');
  assert.ok(consultedCosts.some(q=>q.code==='91991'&&q.uf==='SP'));
  assert.ok(consultedCosts.some(q=>q.code==='100860'&&q.uf==='SP'));
  assert.deepEqual(errors,[]);
- console.log('PASS Android: 9.136 composições, 104596 PR CCD publicado R$148.29 sem import privado, tipos isolados, custos e venda editáveis e HH');
+ console.log('PASS Android: 104596 PR CCD completo R$148.29 vs mão de obra R$55.66, preços distintos editáveis, catálogo preservado e cronograma HH');
 }finally{await browser.close();}

@@ -1,6 +1,7 @@
 import React, { useEffect,useRef,useState } from 'react';
 import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
 import {SinapiReferencePicker} from '../catalog/SinapiReferencePicker';
+import {useSinapiLaborOnlyLookup} from '../../utils/useSinapiLaborOnlyLookup';
 import type {SinapiComposition} from '../../types/schedule';
 import {sinapiUFs,withSinapiProvenance,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
 import { useApp } from '../../context/AppContext';
@@ -54,6 +55,7 @@ export const QuoteBuilderView: React.FC = () => {
   const [sinapiBrowseOpen,setSinapiBrowseOpen]=useState(false);
   const [pickedSinapi,setPickedSinapi]=useState<SinapiComposition|null>(null);
   const [sinapiPrice,setSinapiPrice]=useState(0);
+  const [sinapiPricingScope,setSinapiPricingScope]=useState<'complete'|'labor_only'>('complete');
   const [sinapiCost,setSinapiCost]=useState(0);
   const [sinapiCostConfirmed,setSinapiCostConfirmed]=useState(false);
   const sinapiSaleEdited=useRef(false);
@@ -62,9 +64,11 @@ export const QuoteBuilderView: React.FC = () => {
     sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:'');
   const [sinapiRegime,setSinapiRegime]=useState<SinapiRegime|''>('');
   const sinapiLookup=useSinapiCostLookup(pickedSinapi,sinapiUF,sinapiRegime);
+  const laborLookup=useSinapiLaborOnlyLookup(pickedSinapi,sinapiUF,sinapiRegime,
+    Boolean(pickedSinapi));
   useEffect(()=>{
     const cost=sinapiLookup.cost;
-    if(!pickedSinapi||!cost||cost.code!==pickedSinapi.code||
+    if(sinapiPricingScope!=='complete'||!pickedSinapi||!cost||cost.code!==pickedSinapi.code||
       cost.source.reference!==pickedSinapi.reference||
       cost.source.uf!==sinapiUF||cost.source.regime!==sinapiRegime||
       !sameServiceUnit(cost.unit,pickedSinapi.unit))return;
@@ -72,7 +76,18 @@ export const QuoteBuilderView: React.FC = () => {
       setSinapiCost(cost.unitCost);setSinapiCostConfirmed(true);
     }
     if(!sinapiSaleEdited.current)setSinapiPrice(cost.unitCost);
-  },[sinapiLookup.cost,pickedSinapi?.code,sinapiUF,sinapiRegime]);
+  },[sinapiLookup.cost,pickedSinapi?.code,sinapiUF,sinapiRegime,sinapiPricingScope]);
+  useEffect(()=>{
+    const result=laborLookup.value;
+    if(sinapiPricingScope!=='labor_only'||!pickedSinapi||
+      !result||result.unitCost===null||
+      result.source.reference!==pickedSinapi.reference||
+      result.source.uf!==sinapiUF||result.source.regime!==sinapiRegime)return;
+    if(!sinapiCostEdited.current){
+      setSinapiCost(result.unitCost);setSinapiCostConfirmed(true);
+    }
+    if(!sinapiSaleEdited.current)setSinapiPrice(result.unitCost);
+  },[laborLookup.value,pickedSinapi?.code,sinapiUF,sinapiRegime,sinapiPricingScope]);
   const [sinapiAddError,setSinapiAddError]=useState('');
 
   // Additional costs & adjustments
@@ -147,7 +162,8 @@ export const QuoteBuilderView: React.FC = () => {
           imageUrl: catalogItem.imageUrl,
           laborType: catalogItem.laborType,
           catalogItemId: catalogItem.id,
-          sinapiComposition: catalogItem.sinapiComposition
+          sinapiComposition: catalogItem.sinapiComposition,
+          sinapiPricingScope:catalogItem.sinapiPricingScope
         }
       ];
     });
@@ -156,8 +172,15 @@ export const QuoteBuilderView: React.FC = () => {
   const prepareSinapiForQuote=(c:SinapiComposition)=>{
     setPickedSinapi(c);setSinapiBrowseOpen(false);setSinapiAddError('');
     sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
-    const previously=catalog.find(item=>item.type==='servico' &&
+    const sameCode=catalog.filter(item=>item.type==='servico' &&
       item.sinapiComposition?.code===c.code && item.sinapiComposition?.reference===c.reference);
+    // A biblioteca sempre começa pela composição completa, mesmo quando há
+    // uma versão de mão de obra com preço comercial já cadastrado.
+    const previously=sameCode.find(item=>(item.sinapiPricingScope||'complete')==='complete' &&
+      item.sinapiComposition?.uf===company.state) ||
+      sameCode.find(item=>(item.sinapiPricingScope||'complete')==='complete') ||
+      sameCode[0];
+    setSinapiPricingScope(previously?.sinapiPricingScope||'complete');
     setSinapiPrice(previously?.price||0);
     setSinapiCost(previously?.cost||0);
     setSinapiCostConfirmed(previously?.costConfirmed||false);
@@ -166,9 +189,16 @@ export const QuoteBuilderView: React.FC = () => {
       (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
     setSinapiRegime(previously?.sinapiComposition?.regime||'');
   };
+  const resetRegionalQuoteCost=()=>{
+    // Nunca reutilizar preço automático de outro estado ou regime.
+    // Valor explicitamente editado pela pessoa permanece inalterado.
+    if(!sinapiSaleEdited.current)setSinapiPrice(0);
+    if(!sinapiCostEdited.current){setSinapiCost(0);setSinapiCostConfirmed(false);}
+    setSinapiAddError('');
+  };
   const addSinapiToQuote=()=>{
     if(!pickedSinapi)return;
-    if(sinapiLookup.status==='loading'&&!sinapiSaleEdited.current&&!sinapiCostEdited.current){
+    if((sinapiPricingScope==='complete'?sinapiLookup.status:laborLookup.status)==='loading'&&!sinapiSaleEdited.current&&!sinapiCostEdited.current){
       setSinapiAddError('Aguarde a consulta do custo oficial antes de adicionar.');return;
     }
     if(!Number.isFinite(sinapiPrice)||sinapiPrice<=0){
@@ -183,20 +213,24 @@ export const QuoteBuilderView: React.FC = () => {
         reference:pickedSinapi.reference||'',uf:sinapiUF,regime:sinapiRegime
       });
       const known=catalog.find(item=>item.type==='servico' &&
+        (item.sinapiPricingScope||'complete')===sinapiPricingScope &&
         item.sinapiComposition?.code===composition.code &&
         item.sinapiComposition?.reference===composition.reference &&
         item.sinapiComposition?.uf===composition.uf &&
         item.sinapiComposition?.regime===composition.regime &&
         item.unit===composition.unit);
       const catalogItem:CatalogItem=known||{
-        id:newId('cat'),type:'servico',name:`SINAPI ${composition.code} · ${composition.description}`,
+        id:newId('cat'),type:'servico',
+        name:sinapiPricingScope==='labor_only'
+          ?`SINAPI ${composition.code} · Somente mão de obra · ${composition.description}`
+          :`SINAPI ${composition.code} · ${composition.description}`,
         category:categoryLabel(composition),price:sinapiPrice,unit:composition.unit,
         cost:sinapiCostConfirmed?sinapiCost:undefined,costConfirmed:sinapiCostConfirmed,
         description:`Composição analítica ${composition.reference}; HH oficiais do arquivo ${composition.sourceFile}. Preço comercial declarado pelo usuário.`,
-        sinapiComposition:composition
+        sinapiComposition:composition,sinapiPricingScope
       };
       if(!known)addCatalogItem(catalogItem);
-      handleAddItemFromCatalog({...catalogItem,price:sinapiPrice,
+      handleAddItemFromCatalog({...catalogItem,price:sinapiPrice,sinapiPricingScope,
         cost:sinapiCostConfirmed?sinapiCost:undefined,costConfirmed:sinapiCostConfirmed},true);
       setPickedSinapi(null);setSinapiAddError('');
     }catch(err){
@@ -810,6 +844,34 @@ export const QuoteBuilderView: React.FC = () => {
                   title="Selecionar serviço SINAPI para o orçamento"/>}
                 {pickedSinapi&&<div className="shrink-0 space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
                   <strong className="block text-xs text-emerald-200">SINAPI {pickedSinapi.code} · {categoryLabel(pickedSinapi)}</strong>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-slate-200">O que entra no orçamento?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" aria-pressed={sinapiPricingScope==='complete'}
+                        className={`min-h-11 rounded-lg border p-2 text-[11px] font-semibold ${sinapiPricingScope==='complete'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}
+                        onClick={()=>{if(sinapiPricingScope==='complete')return;
+                          setSinapiPricingScope('complete');
+                          sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
+                          setSinapiPrice(0);setSinapiCost(0);setSinapiCostConfirmed(false);
+                          setSinapiAddError('');
+                        }}>Completo (com material)</button>
+                      <button type="button" aria-pressed={sinapiPricingScope==='labor_only'}
+                        className={`min-h-11 rounded-lg border p-2 text-[11px] font-semibold ${sinapiPricingScope==='labor_only'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}
+                        onClick={()=>{if(sinapiPricingScope==='labor_only')return;
+                          setSinapiPricingScope('labor_only');
+                          sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
+                          const current=laborLookup.status==='ready'&&
+                            laborLookup.value?.source.uf===sinapiUF&&
+                            laborLookup.value?.source.regime===sinapiRegime
+                            ?laborLookup.value.unitCost:null;
+                          setSinapiPrice(current??0);
+                          setSinapiCost(current??0);
+                          setSinapiCostConfirmed(current!==null);
+                          setSinapiAddError('');
+                        }}>Só mão de obra</button>
+                    </div>
+                    <p className="text-[10px] text-slate-400">{sinapiPricingScope==='labor_only'?'Materiais fornecidos pelo cliente. HH continuam no cronograma.':'Composição completa, com materiais e execução.'}</p>
+                  </div>
                   <p className="text-xs text-slate-200">{pickedSinapi.description}</p>
                   <p className="text-[11px] text-emerald-200">Profissionais: {pickedSinapi.labor.map(l=>`${l.role}: ${l.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH/${pickedSinapi.unit}`).join(' · ')}</p>
                   <label className="block text-xs text-slate-200">Preço comercial de venda (R$ por {pickedSinapi.unit})
@@ -829,6 +891,19 @@ export const QuoteBuilderView: React.FC = () => {
                       aria-label="Confirmar custo unitário SINAPI"/>
                     Confirmar custo informado (desmarque se não souber)
                   </label>
+                  {sinapiPricingScope==='labor_only'&&<>
+                    {laborLookup.status==='loading'&&<p role="status" className="text-[11px] text-sky-200">Consultando preço por HH dos profissionais…</p>}
+                    {laborLookup.value&&<div className="space-y-1 text-[11px] text-slate-200">
+                      {laborLookup.value.workers.map(w=><div className="flex justify-between gap-2" key={w.code+':'+w.role}>
+                        <span>{w.role} ({w.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH)</span>
+                        <span className="shrink-0">{w.subtotal===null?'Sem preço/h':formatCurrency(w.subtotal)}</span>
+                      </div>)}
+                    </div>}
+                    {laborLookup.status==='ready'&&<p role="status" className="text-[11px] text-emerald-200">Estimativa só mão de obra: {formatCurrency(laborLookup.value!.unitCost!)}/{pickedSinapi.unit}. Materiais não incluídos. Preço editável.</p>}
+                    {laborLookup.status==='missing'&&<p className="text-[11px] text-amber-200">Um ou mais profissionais sem preço/h na UF: importe o XLSX em Serviços → Custos SINAPI ou informe o preço da execução manualmente, sem material.</p>}
+                    {laborLookup.status==='error'&&<p role="alert" className="text-[11px] text-rose-200">{laborLookup.error}</p>}
+                  </>}
+                  {sinapiPricingScope==='complete'&&<>
                   {sinapiLookup.status==='loading'&&<p role="status" className="text-[11px] text-sky-200">Consultando custo regional SINAPI…</p>}
                   {sinapiLookup.status==='found'&&<p className="text-[11px] text-emerald-200">
                     Referência importada: {formatCurrency(sinapiLookup.cost!.unitCost)}/{pickedSinapi.unit},
@@ -840,17 +915,18 @@ export const QuoteBuilderView: React.FC = () => {
                     Ainda sem custo oficial importado para esta UF, competência e encargos. Cadastre custos em Serviços → Custos SINAPI, ou informe preço e custo manualmente.
                   </p>}
                   {sinapiLookup.status==='error'&&<p role="alert" className="text-[11px] text-rose-200">{sinapiLookup.error}</p>}
+                  </>}
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-[11px] text-slate-200">UF da obra
                       <select aria-label="UF da composição SINAPI no orçamento" value={sinapiUF}
-                        onChange={e=>setSinapiUF(e.target.value as SinapiUF|'')}
+                        onChange={e=>{resetRegionalQuoteCost();setSinapiUF(e.target.value as SinapiUF|'');}}
                         className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
                         <option value="">Selecionar</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
                       </select>
                     </label>
                     <label className="block text-[11px] text-slate-200">Encargos
                       <select aria-label="Encargos da composição SINAPI no orçamento" value={sinapiRegime}
-                        onChange={e=>setSinapiRegime(e.target.value as SinapiRegime|'')}
+                        onChange={e=>{resetRegionalQuoteCost();setSinapiRegime(e.target.value as SinapiRegime|'');}}
                         className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
                         <option value="">Selecionar</option>
                         <option value="sem_desoneracao">Sem desoneração</option>
@@ -858,7 +934,14 @@ export const QuoteBuilderView: React.FC = () => {
                       </select>
                     </label>
                   </div>
-                  <p className="text-[10px] text-amber-200">Custo de referência não inclui preço comercial, lucro ou BDI automaticamente. Confira os valores e ajuste-os livremente.</p>
+                  {sinapiPricingScope==='complete'&&sinapiLookup.cost&&laborLookup.status==='ready'&&laborLookup.value?.unitCost!==null&&
+                    <div className="rounded-lg border border-sky-500/20 p-2 text-[11px] text-slate-200">
+                      <div className="flex justify-between gap-2"><span>Custo completo</span><strong>{formatCurrency(sinapiLookup.cost.unitCost)}</strong></div>
+                      <div className="flex justify-between gap-2"><span>Mão de obra HH</span><strong>{formatCurrency(laborLookup.value!.unitCost!)}</strong></div>
+                      {sinapiLookup.cost.unitCost>=laborLookup.value!.unitCost!&&<div className="flex justify-between gap-2"><span>Demais custos (material/equipamento/outros)</span><strong>{formatCurrency(Math.round((sinapiLookup.cost.unitCost-laborLookup.value!.unitCost!)*100)/100)}</strong></div>}
+                    </div>}
+                  {sinapiPricingScope==='complete'&&sinapiLookup.status==='missing'&&laborLookup.status==='ready'&&<p className="text-[11px] text-sky-200">Sem custo integral nesta UF, mas mão de obra calculada em {formatCurrency(laborLookup.value!.unitCost!)}. Se o cliente fornece material, escolha “Só mão de obra”.</p>}
+                  <p className="text-[10px] text-amber-200">{sinapiPricingScope==='labor_only'?'Mão de obra por HH × custo/h com encargos; materiais não entram.':'Custo integral da composição.'} A margem comercial é definida por você.</p>
                   {sinapiAddError&&<p role="alert" className="text-xs text-rose-200">{sinapiAddError}</p>}
                   <button type="button" onClick={addSinapiToQuote}
                     className="min-h-11 w-full rounded-lg bg-sky-700 p-2 text-xs font-bold text-white">

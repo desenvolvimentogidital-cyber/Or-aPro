@@ -2,6 +2,7 @@ import React, { useEffect,useRef,useState } from 'react';
 import {useAuth} from '../../context/AuthContext';
 import {saveOfficialSinapiCosts} from '../../services/sinapiUnitCosts';
 import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
+import {useSinapiLaborOnlyLookup} from '../../utils/useSinapiLaborOnlyLookup';
 import {SinapiReferencePicker} from './SinapiReferencePicker';
 import type {SinapiComposition} from '../../types/schedule';
 import {categoryLabel} from '../../utils/sinapiCategories';
@@ -32,9 +33,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const [activeTab, setActiveTab] = useState<'todos' | ItemType>(initialType || 'todos');
   const [searchTerm, setSearchTerm] = useState('');
   const [showSinapiCosts,setShowSinapiCosts]=useState(false);
-  const [sinapiCostUF,setSinapiCostUF]=useState<SinapiUF|''>('');
-  const [sinapiCostRef,setSinapiCostRef]=useState('');
-  const [sinapiCostRegime,setSinapiCostRegime]=useState<SinapiRegime|''>('');
+  const [sinapiCostUF,setSinapiCostUF]=useState<SinapiUF|''>(
+    sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:'');
+  const [sinapiCostRef,setSinapiCostRef]=useState('09/2026');
+  const [sinapiCostRegime,setSinapiCostRegime]=useState<SinapiRegime|'ambos'|''>('ambos');
+  const [sinapiImportProgress,setSinapiImportProgress]=useState('');
   const [sinapiCostRows,setSinapiCostRows]=useState<SinapiUnitCost[]>([]);
   const [sinapiCostQuery,setSinapiCostQuery]=useState('');
   const [sinapiCostError,setSinapiCostError]=useState('');
@@ -46,6 +49,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const salePriceEdited=useRef(false);
   const directCostEdited=useRef(false);
   const [sinapiNeedsSalePrice,setSinapiNeedsSalePrice]=useState(false);
+  const [sinapiPricingScope,setSinapiPricingScope]=useState<'complete'|'labor_only'>('complete');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<CatalogItem | null>(null);
   const [selectedSinapi,setSelectedSinapi]=useState<SinapiComposition|null>(null);
@@ -55,9 +59,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const [sinapiServiceRegime,setSinapiServiceRegime]=useState<SinapiRegime|''>('');
   const sinapiLookup=useSinapiCostLookup(selectedSinapi,sinapiServiceUF,
     sinapiServiceRegime,costRevision);
+  const laborLookup=useSinapiLaborOnlyLookup(selectedSinapi,sinapiServiceUF,
+    sinapiServiceRegime,Boolean(selectedSinapi),costRevision);
   useEffect(()=>{
     const record=sinapiLookup.cost;
-    if(!selectedSinapi||itemToEdit||!record||
+    if(sinapiPricingScope!=='complete'||!selectedSinapi||itemToEdit||!record||
        record.code!==selectedSinapi.code||
        record.source.reference!==selectedSinapi.reference||
        record.source.uf!==sinapiServiceUF||
@@ -66,7 +72,18 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     if(!directCostEdited.current)setCost(String(record.unitCost));
     if(!salePriceEdited.current)setPrice(record.unitCost);
   },[sinapiLookup.cost,selectedSinapi?.code,itemToEdit?.id,
-     sinapiServiceUF,sinapiServiceRegime]);
+     sinapiServiceUF,sinapiServiceRegime,sinapiPricingScope]);
+  useEffect(()=>{
+    const estimate=laborLookup.value;
+    if(sinapiPricingScope!=='labor_only'||!selectedSinapi||itemToEdit||
+      !estimate||estimate.unitCost===null||
+      estimate.source.reference!==selectedSinapi.reference||
+      estimate.source.uf!==sinapiServiceUF||
+      estimate.source.regime!==sinapiServiceRegime)return;
+    if(!directCostEdited.current)setCost(String(estimate.unitCost));
+    if(!salePriceEdited.current)setPrice(estimate.unitCost);
+  },[laborLookup.value,selectedSinapi?.code,itemToEdit?.id,
+     sinapiServiceUF,sinapiServiceRegime,sinapiPricingScope]);
 
   // Form states
   const [name, setName] = useState('');
@@ -100,6 +117,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
 
   const openAddModal = (defaultType?: ItemType) => {
     setItemToEdit(null);setSinapiNeedsSalePrice(false);setSelectedSinapi(null);
+    setSinapiPricingScope('complete');
     setInlinePriceError('');setInlinePriceProgress('');
     salePriceEdited.current=false;directCostEdited.current=false;
     setShowSinapiPicker(defaultType==='servico'||activeTab==='servico');
@@ -117,6 +135,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
 
   const openEditModal = (item: CatalogItem) => {
     setSinapiNeedsSalePrice(false);setSelectedSinapi(item.sinapiComposition||null);
+    setSinapiPricingScope(item.sinapiPricingScope||'complete');
     setInlinePriceError('');setInlinePriceProgress('');
     salePriceEdited.current=true;directCostEdited.current=true;
     setSinapiServiceUF(item.sinapiComposition?.uf|| (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
@@ -165,7 +184,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         laborType: type === 'mao_de_obra' ? laborType : undefined,
         description: description.trim(),
         imageUrl: imageUrl || undefined,
-        sinapiComposition:type==='servico'?analytical:undefined
+        sinapiComposition:type==='servico'?analytical:undefined,
+        sinapiPricingScope:type==='servico'&&analytical?sinapiPricingScope:undefined
       });
     } else {
       const newItem: CatalogItem = {
@@ -180,7 +200,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         laborType: type === 'mao_de_obra' ? laborType : undefined,
         description: description.trim(),
         imageUrl: imageUrl || undefined,
-        sinapiComposition:type==='servico'?analytical:undefined
+        sinapiComposition:type==='servico'?analytical:undefined,
+        sinapiPricingScope:type==='servico'&&analytical?sinapiPricingScope:undefined
       };
       addCatalogItem(newItem);
     }
@@ -195,6 +216,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     if(known)openEditModal(known);
     else {
       setItemToEdit(null);
+      setSinapiPricingScope('complete');
       salePriceEdited.current=false;directCostEdited.current=false;
       setName(`SINAPI ${composition.code} · ${composition.description}`);
       setType('servico');
@@ -221,7 +243,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       if(!selectedSinapi||!sinapiServiceUF||!sinapiServiceRegime)
         throw Error('Selecione UF e encargos antes de importar o XLSX.');
       if(!session)throw Error('Entre na sua conta para salvar os preços da tabela.');
-      if(!/\\.xlsx$/i.test(file.name)||file.size>35_000_000)
+      if(!/\.xlsx$/i.test(file.name)||file.size>35_000_000)
         throw Error('Escolha o arquivo SINAPI Referência 09/2026 em XLSX de até 35 MB.');
       setSavingCostFile(true);
       const {rows}=await importSinapiOfficialCosts(file,{
@@ -251,33 +273,52 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       salePriceEdited.current=false;directCostEdited.current=false;
     }
     setSelectedSinapi(null);setSinapiNeedsSalePrice(false);
+    setSinapiPricingScope('complete');
     setShowSinapiPicker(false);
     setInlinePriceError('');setInlinePriceProgress('');
   };
   const readSinapiCostCSV=async(file?:File)=>{
-    if(!file)return;
+    if(!file||savingCostFile)return;
     setSinapiCostError('');setSinapiCostRows([]);setSavedCostCount(0);
+    setSinapiImportProgress('');
     try {
-      if(!/\.(csv|xlsx)$/i.test(file.name)||file.size>35_000_000)throw Error('Selecione CSV ou SINAPI Referência XLSX de até 35 MB.');
-      if(!sinapiCostUF||!sinapiCostRegime)throw Error('Selecione UF e encargos antes de importar.');
-      const origin={uf:sinapiCostUF,reference:sinapiCostRef,regime:sinapiCostRegime};
-      let result;
-      if(/\.xlsx$/i.test(file.name))result=await importSinapiOfficialCosts(file,origin);
-      else {
-        const bytes=new Uint8Array(await file.arrayBuffer());
-        let text=new TextDecoder('utf-8').decode(bytes);
-        if(text.includes('\uFFFD'))text=new TextDecoder('windows-1252').decode(bytes);
-        result=parseSinapiUnitCosts(text,origin);
-      }
-      if(!session)throw Error('Entre na sua conta antes de importar custos SINAPI.');
+      if(!/\.(csv|xlsx)$/i.test(file.name)||file.size>35_000_000)
+        throw Error('Selecione CSV ou SINAPI Referência XLSX de até 35 MB.');
+      if(!sinapiCostUF||!sinapiCostRegime)
+        throw Error('Selecione UF e encargos antes de importar.');
+      if(/\.csv$/i.test(file.name)&&sinapiCostRegime==='ambos')
+        throw Error('CSV identifica apenas um regime: selecione com ou sem desoneração.');
+      if(!session)throw Error('Entre na sua conta antes de importar preços SINAPI.');
       setSavingCostFile(true);
-      try {
-        const saved=await saveOfficialSinapiCosts(session,result.rows,file.name);
-        setSinapiCostRows(result.rows);setSavedCostCount(saved);
+      const regimes:SinapiRegime[]=sinapiCostRegime==='ambos'
+        ?['sem_desoneracao','com_desoneracao']:[sinapiCostRegime];
+      let combined:SinapiUnitCost[]=[];
+      let savedCount=0,ignored=0;
+      for(const regime of regimes){
+        const origin={uf:sinapiCostUF,reference:sinapiCostRef,regime};
+        setSinapiImportProgress(`Lendo ${regime==='com_desoneracao'?'CCD (com desoneração)':'CSD (sem desoneração)'} da planilha…`);
+        let result:{rows:SinapiUnitCost[];ignored:number};
+        if(/\\.xlsx$/i.test(file.name))result=await importSinapiOfficialCosts(file,origin);
+        else{
+          const bytes=new Uint8Array(await file.arrayBuffer());
+          let text=new TextDecoder('utf-8').decode(bytes);
+          if(text.includes('\uFFFD'))text=new TextDecoder('windows-1252').decode(bytes);
+          result=parseSinapiUnitCosts(text,origin);
+        }
+        ignored+=result.ignored;
+        const saved=await saveOfficialSinapiCosts(session,result.rows,file.name,(progress,total)=>{
+          setSinapiImportProgress(`Salvando ${regime==='com_desoneracao'?'com':'sem'} desoneração: ${progress.toLocaleString('pt-BR')}/${total.toLocaleString('pt-BR')} custos…`);
+        });
+        savedCount+=saved;combined=combined.concat(result.rows);
+        setSavedCostCount(savedCount);
         setCostRevision(v=>v+1);
-        if(result.ignored)setSinapiCostError(`${result.ignored} linha(s) ignoradas por dados incompletos. Confira a fonte.`);
-      }finally{setSavingCostFile(false);}
-    }catch(err){setSinapiCostError(err instanceof Error?err.message:'Não foi possível ler custos SINAPI.');}
+      }
+      setSinapiCostRows(combined);
+      setSinapiImportProgress(`Importação concluída para ${sinapiCostUF}: ${savedCount.toLocaleString('pt-BR')} preços guardados, incluindo custos horários dos profissionais.`);
+      if(ignored)setSinapiCostError(`${ignored} registros sem custo foram ignorados; não serão apresentados como valor zero.`);
+    }catch(err){
+      setSinapiCostError(err instanceof Error?err.message:'Não foi possível ler custos SINAPI.');
+    }finally{setSavingCostFile(false);}
   };
   const prepareSinapiItem=(item:SinapiUnitCost)=>{
     openAddModal('servico');
@@ -312,14 +353,15 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       <section className="rounded-2xl border border-orange-500/20 bg-[#141822] p-3 space-y-3">
         <button type="button" className="flex w-full items-center justify-between gap-2 text-left text-xs font-semibold text-orange-200" onClick={()=>setShowSinapiCosts(v=>!v)} aria-expanded={showSinapiCosts}>Custos SINAPI — importar XLSX oficial ou CSV <span>{showSinapiCosts?'▴':'▾'}</span></button>
         {showSinapiCosts&&<>
-          <p className="text-[11px] leading-relaxed text-slate-400">Importe uma vez os preços oficiais por UF, mês e regime no XLSX SINAPI Referência (aba CSD ou CCD) ou CSV estruturado. Eles serão salvos na sua conta e sugeridos ao selecionar serviços. O preço comercial começa igual ao custo, sem margem adicional automática, e continua editável.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><label className="text-[11px] text-slate-400">Competência<input type="text" className="mt-1 w-full rounded-xl border border-white/10 bg-[#090c13] p-2 text-white" maxLength={7} value={sinapiCostRef} onChange={e=>setSinapiCostRef(e.target.value)} placeholder="MM/AAAA"/></label><label className="text-[11px] text-slate-400">UF<select className="mt-1 w-full rounded-xl border border-white/10 bg-[#090c13] p-2 text-white" value={sinapiCostUF} onChange={e=>setSinapiCostUF(e.target.value as SinapiUF|'')}><option value="">Selecione</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}</select></label><label className="text-[11px] text-slate-400">Encargos<select className="mt-1 w-full rounded-xl border border-white/10 bg-[#090c13] p-2 text-white" value={sinapiCostRegime} onChange={e=>setSinapiCostRegime(e.target.value as SinapiRegime|'')}><option value="">Selecione</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option></select></label></div>
-          <label className="block cursor-pointer rounded-xl border border-dashed border-orange-500/40 p-3 text-center text-xs font-semibold text-orange-200">Selecionar XLSX ou CSV de custos<input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={e=>{void readSinapiCostCSV(e.target.files?.[0]);e.target.value='';}}/></label>
-          {savingCostFile&&<p role="status" className="text-xs text-sky-200">Salvando preços oficiais na sua conta…</p>}
+          <p className="text-[11px] leading-relaxed text-slate-400">Importe o XLSX oficial uma vez para sua UF. Escolha “Ambos” para carregar CSD e CCD no mesmo envio, incluindo os preços/h dos profissionais. Isso ajuda a preencher os serviços da tabela que ainda não têm custo. Preço de venda continua editável.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2"><label className="text-[11px] text-slate-400">Competência<input type="text" className="mt-1 w-full rounded-xl border border-white/10 bg-[#090c13] p-2 text-white" maxLength={7} value={sinapiCostRef} onChange={e=>setSinapiCostRef(e.target.value)} placeholder="MM/AAAA"/></label><label className="text-[11px] text-slate-400">UF<select className="mt-1 w-full rounded-xl border border-white/10 bg-[#090c13] p-2 text-white" value={sinapiCostUF} onChange={e=>setSinapiCostUF(e.target.value as SinapiUF|'')}><option value="">Selecione</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}</select></label><label className="text-[11px] text-slate-400">Encargos<select className="mt-1 w-full rounded-xl border border-white/10 bg-[#090c13] p-2 text-white" value={sinapiCostRegime} onChange={e=>setSinapiCostRegime(e.target.value as SinapiRegime|'ambos'|'')}><option value="">Selecione</option><option value="ambos">Ambos (CSD + CCD)</option><option value="sem_desoneracao">Sem desoneração</option><option value="com_desoneracao">Com desoneração</option></select></label></div>
+          <label className="block cursor-pointer rounded-xl border border-dashed border-orange-500/40 p-3 text-center text-xs font-semibold text-orange-200">Selecionar XLSX ou CSV de custos<input type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={savingCostFile} className="sr-only" onChange={e=>{void readSinapiCostCSV(e.target.files?.[0]);e.target.value='';}}/></label>
+          {sinapiImportProgress&&<p role="status" className="text-xs text-sky-200">{sinapiImportProgress}</p>}
+          {savingCostFile&&<p role="status" className="text-xs text-sky-200">Processando tabela, aguarde até confirmar a conclusão…</p>}
           {savedCostCount>0&&<p role="status" className="text-xs text-emerald-300">{savedCostCount.toLocaleString('pt-BR')} custos SINAPI salvos na sua conta. Eles serão preenchidos ao selecionar um serviço correspondente.</p>}
           {sinapiCostError&&<p role="alert" className="text-[11px] text-amber-300">{sinapiCostError}</p>}
           {sinapiCostRows.length>0&&<div className="space-y-2"><p className="text-xs text-emerald-300">{sinapiCostRows.length} custos gravados. Escolha uma composição para preencher o cadastro; ajuste o custo e o preço de venda conforme necessário.</p><input className="w-full rounded-lg border border-white/10 bg-[#090c13] p-2 text-xs text-white" value={sinapiCostQuery} onChange={e=>setSinapiCostQuery(e.target.value)} placeholder="Buscar código ou descrição"/>
-            <div className="max-h-60 space-y-2 overflow-y-auto">{sinapiCostRows.filter(v=>`${v.code} ${v.description}`.toLowerCase().includes(sinapiCostQuery.toLowerCase())).slice(0,40).map(item=><button type="button" key={`${item.code}|${item.unit}`} onClick={()=>prepareSinapiItem(item)} className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-2 text-left text-[11px] text-slate-200"><span className="min-w-0 flex-1 truncate">{item.code} · {item.description} ({item.unit})</span><span className="shrink-0 text-orange-200">Custo {formatCurrency(item.unitCost)}</span></button>)}</div>
+            <div className="max-h-60 space-y-2 overflow-y-auto">{sinapiCostRows.filter(v=>`${v.code} ${v.description}`.toLowerCase().includes(sinapiCostQuery.toLowerCase())).slice(0,40).map(item=><button type="button" key={`${item.code}|${item.unit}|${item.source.regime}`} onClick={()=>prepareSinapiItem(item)} className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/10 bg-black/20 p-2 text-left text-[11px] text-slate-200"><span className="min-w-0 flex-1 truncate">{item.code} · {item.description} ({item.unit}) — {item.source.regime==='com_desoneracao'?'com':'sem'} desoneração</span><span className="shrink-0 text-orange-200">Custo {formatCurrency(item.unitCost)}</span></button>)}</div>
           </div>}
         </>}
       </section>
@@ -507,6 +549,55 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                       </select>
                     </label>
                   </div>
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
+                    <p className="text-xs font-semibold text-slate-200">O que você vai fornecer?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" aria-pressed={sinapiPricingScope==='complete'}
+                        onClick={()=>{if(sinapiPricingScope==='complete')return;
+                          if(itemToEdit)setItemToEdit(null);
+                          setSinapiPricingScope('complete');
+                          salePriceEdited.current=false;directCostEdited.current=false;
+                          setPrice(0);setCost('');
+                          setName(`SINAPI ${selectedSinapi.code} · ${selectedSinapi.description}`);
+                        }}
+                        className={`min-h-11 rounded-lg border px-2 text-[11px] font-semibold ${sinapiPricingScope==='complete'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}>
+                        Serviço completo
+                      </button>
+                      <button type="button" aria-pressed={sinapiPricingScope==='labor_only'}
+                        onClick={()=>{if(sinapiPricingScope==='labor_only')return;
+                          if(itemToEdit)setItemToEdit(null);
+                          setSinapiPricingScope('labor_only');
+                          salePriceEdited.current=false;directCostEdited.current=false;
+                          // Custos H já consultados enquanto a modalidade completa estava visível:
+                          // preencher imediatamente e evitar campos vazios até o próximo efeito.
+                          const current=laborLookup.status==='ready'&&
+                            laborLookup.value?.source.uf===sinapiServiceUF&&
+                            laborLookup.value?.source.regime===sinapiServiceRegime
+                            ?laborLookup.value.unitCost:null;
+                          setPrice(current??0);setCost(current===null?'':String(current));
+                          setName(`SINAPI ${selectedSinapi.code} · Mão de obra · ${selectedSinapi.description}`);
+                        }}
+                        className={`min-h-11 rounded-lg border px-2 text-[11px] font-semibold ${sinapiPricingScope==='labor_only'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}>
+                        Somente mão de obra
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">{sinapiPricingScope==='labor_only'?
+                      'Material fornecido pelo cliente. O serviço permanece vinculado ao SINAPI e às HH do cronograma.':'Incluir material e execução no preço da composição completa.'}</p>
+                  </div>
+                  {sinapiPricingScope==='labor_only'&&<>
+                    {laborLookup.status==='loading'&&<p role="status" className="text-[11px] text-sky-200">Consultando custos/h dos profissionais…</p>}
+                    {laborLookup.value&&<div className="space-y-1 text-[11px] text-slate-200">
+                      {laborLookup.value.workers.map(w=><div key={w.code+':'+w.role} className="flex justify-between gap-2">
+                        <span className="min-w-0">{w.role}: {w.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH</span>
+                        <span className="shrink-0">{w.subtotal===null?'Sem preço/h':formatCurrency(w.subtotal)}</span>
+                      </div>)}
+                    </div>}
+                    {laborLookup.status==='ready'&&<p role="status" className="text-[11px] text-emerald-200">Mão de obra estimada: {formatCurrency(laborLookup.value!.unitCost!)}/{selectedSinapi.unit}. Sem materiais do serviço; valor de venda editável.</p>}
+                    {laborLookup.status==='missing'&&<p className="text-[11px] text-amber-200">Alguns profissionais não têm preço/h publicado nesta UF. Importe custos CSD/CCD ou informe o valor da sua mão de obra manualmente. Não será somado material.</p>}
+                    {laborLookup.status==='error'&&<p role="alert" className="text-[11px] text-rose-200">{laborLookup.error}</p>}
+                    <p className="text-[10px] text-amber-200">Custo estimado por HH × custo/h dos profissionais com encargos; não é uma separação oficial completa de materiais e equipamentos.</p>
+                  </>}
+                  {sinapiPricingScope==='complete'&&<>
                   {sinapiLookup.status==='loading'&&<p className="text-[11px] text-sky-200">Consultando custo regional SINAPI…</p>}
                   {sinapiLookup.status==='found'&&<p role="status" className="text-[11px] text-emerald-200">
                     Custo importado: {formatCurrency(sinapiLookup.cost!.unitCost)}/{selectedSinapi.unit},
@@ -529,6 +620,15 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                     </label>}
                   {inlinePriceProgress&&<p role="status" className="text-[11px] text-sky-200">{inlinePriceProgress}</p>}
                   {inlinePriceError&&<p role="alert" className="text-[11px] text-rose-200">{inlinePriceError}</p>}
+                  </>}
+                  {sinapiPricingScope==='complete'&&sinapiLookup.cost&&laborLookup.value?.unitCost!==null&&laborLookup.status==='ready'&&
+                    <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-2 text-[11px] text-slate-200">
+                      <div className="flex justify-between gap-2"><span>Composição completa</span><strong>{formatCurrency(sinapiLookup.cost.unitCost)}</strong></div>
+                      <div className="flex justify-between gap-2"><span>Mão de obra estimada por HH</span><strong>{formatCurrency(laborLookup.value!.unitCost!)}</strong></div>
+                      {sinapiLookup.cost.unitCost>=laborLookup.value!.unitCost!&&<div className="flex justify-between gap-2"><span>Demais custos (materiais/equipamentos/outros)</span><strong>{formatCurrency(Math.round((sinapiLookup.cost.unitCost-laborLookup.value!.unitCost!)*100)/100)}</strong></div>}
+                      <p className="mt-1 text-slate-400">Estimativa de decomposição, não uma discriminação oficial exata dos materiais.</p>
+                    </div>}
+                  {sinapiPricingScope==='complete'&&sinapiLookup.status==='missing'&&laborLookup.status==='ready'&&<p className="text-[11px] text-sky-200">Não há custo completo, mas a mão de obra tem referência de {formatCurrency(laborLookup.value!.unitCost!)}. Se o cliente fornece material, escolha “Somente mão de obra”.</p>}
                   <p className="text-[10px] text-amber-200">O custo de referência não contém margem ou BDI comercial. Confira e altere os valores livremente.</p>
                 </div>}
               </div>}
