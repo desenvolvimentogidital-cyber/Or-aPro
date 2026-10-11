@@ -45,3 +45,5 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011_sinapi_national_inputs_price_reference.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011_sinapi_national_analytical_items.sql
           psql -v ON_ERROR_STOP=1 -f test/sql/sinapi-national-security.sql
+      - name: Precos nacionais SINAPI, teste de carga so em banco efemero
+        run: bash test/sql/national-import-contract.sh
