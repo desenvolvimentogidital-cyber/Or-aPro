@@ -25,6 +25,6 @@ jobs:
       - name: Logic tests
         run: npm run test:logic
       - name: SINAPI nacional — validade do XLSX e preços ausentes (Python sem dependências)
-        run: python3 -m unittest discover -s test -p 'test_sinapi_national_prices.py'
+        run: python3 -m unittest discover -s test -p 'test_sinapi_*.py'
       - name: Production build
         run: npm run build
