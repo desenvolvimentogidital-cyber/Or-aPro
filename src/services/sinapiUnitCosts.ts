@@ -7,6 +7,8 @@ import {validateProvenance,type SinapiProvenance} from '../utils/sinapiRegional'
 const origin=(import.meta.env.VITE_SUPABASE_URL||'').replace(/\/$/,'');
 const apiKey=import.meta.env.VITE_SUPABASE_ANON_KEY||'';
 export interface SavedSinapiUnitCost {
+  code:string;
+  unit:string;
   unitCost:number;
   source:SinapiProvenance;
   sourceFile:string;
@@ -92,5 +94,5 @@ export async function findOfficialSinapiCost(
   const found=Array.isArray(rows)?rows.find(row=>sameServiceUnit(row.unit,composition.unit)
     &&Number.isFinite(Number(row.unit_cost))&&Number(row.unit_cost)>0):undefined;
   if(!found)return null;
-  return {unitCost:Number(found.unit_cost),source:{...source},sourceFile:found.source_file};
+  return {code:composition.code,unit:found.unit,unitCost:Number(found.unit_cost),source:{...source},sourceFile:found.source_file};
 }
