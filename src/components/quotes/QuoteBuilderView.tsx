@@ -65,7 +65,7 @@ export const QuoteBuilderView: React.FC = () => {
   const [sinapiRegime,setSinapiRegime]=useState<SinapiRegime|''>('');
   const sinapiLookup=useSinapiCostLookup(pickedSinapi,sinapiUF,sinapiRegime);
   const laborLookup=useSinapiLaborOnlyLookup(pickedSinapi,sinapiUF,sinapiRegime,
-    sinapiPricingScope==='labor_only');
+    Boolean(pickedSinapi));
   useEffect(()=>{
     const cost=sinapiLookup.cost;
     if(sinapiPricingScope!=='complete'||!pickedSinapi||!cost||cost.code!==pickedSinapi.code||
@@ -915,6 +915,13 @@ export const QuoteBuilderView: React.FC = () => {
                       </select>
                     </label>
                   </div>
+                  {sinapiPricingScope==='complete'&&sinapiLookup.cost&&laborLookup.status==='ready'&&laborLookup.value?.unitCost!==null&&
+                    <div className="rounded-lg border border-sky-500/20 p-2 text-[11px] text-slate-200">
+                      <div className="flex justify-between gap-2"><span>Custo completo</span><strong>{formatCurrency(sinapiLookup.cost.unitCost)}</strong></div>
+                      <div className="flex justify-between gap-2"><span>Mão de obra HH</span><strong>{formatCurrency(laborLookup.value!.unitCost!)}</strong></div>
+                      {sinapiLookup.cost.unitCost>=laborLookup.value!.unitCost!&&<div className="flex justify-between gap-2"><span>Demais custos (material/equipamento/outros)</span><strong>{formatCurrency(Math.round((sinapiLookup.cost.unitCost-laborLookup.value!.unitCost!)*100)/100)}</strong></div>}
+                    </div>}
+                  {sinapiPricingScope==='complete'&&sinapiLookup.status==='missing'&&laborLookup.status==='ready'&&<p className="text-[11px] text-sky-200">Sem custo integral nesta UF, mas mão de obra calculada em {formatCurrency(laborLookup.value!.unitCost!)}. Se o cliente fornece material, escolha “Só mão de obra”.</p>}
                   <p className="text-[10px] text-amber-200">{sinapiPricingScope==='labor_only'?'Mão de obra por HH × custo/h com encargos; materiais não entram.':'Custo integral da composição.'} A margem comercial é definida por você.</p>
                   {sinapiAddError&&<p role="alert" className="text-xs text-rose-200">{sinapiAddError}</p>}
                   <button type="button" onClick={addSinapiToQuote}
