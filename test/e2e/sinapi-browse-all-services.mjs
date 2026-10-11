@@ -12,6 +12,10 @@ const hydraulic={code:'100860',description:'CHUVEIRO ELÉTRICO COMUM CORPO PLÁS
   unit:'UN',reference:'09/2026',sourceFile:electrical.sourceFile,sourceSheet:'Analítico',
   labor:[{code:'88316',role:'SERVENTE COM ENCARGOS COMPLEMENTARES',hoursPerUnit:0.4535436},
     {code:'88267',role:'ENCANADOR OU BOMBEIRO HIDRÁULICO COM ENCARGOS COMPLEMENTARES',hoursPerUnit:1.1816004}]};
+const floorTile={code:'104596',description:'REVESTIMENTO CERÂMICO PARA PISO COM PLACAS TIPO PORCELANATO DE DIMENSÕES 80X80 CM APLICADA EM AMBIENTES DE ÁREA MENOR QUE 5 M². AF_02/2023_PE',
+  unit:'M2',reference:'09/2026',sourceFile:electrical.sourceFile,sourceSheet:'Analítico',
+  labor:[{code:'88316',role:'SERVENTE COM ENCARGOS COMPLEMENTARES',hoursPerUnit:0.261},
+    {code:'88256',role:'AZULEJISTA OU LADRILHEIRO COM ENCARGOS COMPLEMENTARES',hoursPerUnit:1.2005}]};
 const filler=Array.from({length:65},(_,i)=>({...electrical,code:String(300000+i),
  description:'INSTALAÇÃO ELÉTRICA DE TESTE '+i}));
 const fixture={revision:1,payload:{quotes:[],clients:[{id:'cliente-qa',name:'Cliente QA',email:'',phone:''}],
@@ -44,7 +48,8 @@ await page.route('**/rest/v1/rpc/orcapro_browse_sinapi',route=>{
  browseCalls.push(req);
  const q=String(req.p_query||'').toLowerCase();
  const source=q.includes('91991')||q.includes('tomada')?[electrical]:
-   q.includes('100860')||q.includes('chuveiro')?[hydraulic]:filler;
+   q.includes('100860')||q.includes('chuveiro')?[hydraulic]:
+   q.includes('104596')||q.includes('porcelanato')?[floorTile]:filler;
  const list=req.p_category==='eletrica'?source.filter(x=>x.code!=='100860'):
    req.p_category==='hidraulica'?source.filter(x=>x.code==='100860'):source;
  const total=q?list.length:req.p_category==='eletrica'?980:9136;
@@ -64,6 +69,18 @@ await page.route('**/rest/v1/orcapro_sinapi_unit_costs?*',route=>{
  return route.fulfill({status:200,headers,body:JSON.stringify(
    numeric&&uf==='SP'&&regime==='sem_desoneracao'&&reference==='09/2026'?
    [{unit:'UN',unit_cost:numeric,source_file:'SINAPI_CSD_SP_2026_09.xlsx'}]:[])});
+});
+await page.route('**/rest/v1/orcapro_sinapi_published_unit_costs?*',route=>{
+  const u=new URL(route.request().url());
+  const code=(u.searchParams.get('code')||'').replace(/^eq\./,'');
+  const response=code==='104596'?[{
+    unit:'M2',source_file:'SINAPI_Referência_2026_09.xlsx (CSD/CCD)',
+    costs_in_cents:{
+      sem_desoneracao:{PR:15151,SP:14713},
+      com_desoneracao:{PR:14829,SP:14422}
+    }
+  }]:[];
+  return route.fulfill({status:200,headers,body:JSON.stringify(response)});
 });
 await page.route('**/rest/v1/rpc/orcapro_sinapi_library_count',route=>
  route.fulfill({status:200,headers,body:'9136'}));
@@ -108,6 +125,38 @@ await price.fill('180');await price.press('Tab');
  assert.equal(registered.sinapiComposition.regime,'sem_desoneracao');
  assert.equal(registered.sinapiComposition.labor.length,2);
 
+ // Regressão do print: o porcelanato 104596/PR com desoneração tem valor
+ // oficial mesmo quando a conta ainda não importou nenhuma tabela.
+ await page.getByRole('button',{name:'Adicionar serviço da tabela SINAPI'}).click();
+ const floorPicker=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
+ await floorPicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
+ await floorPicker.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
+ await page.getByRole('button',{name:'Material',exact:true}).click();
+ assert.equal(await page.getByRole('textbox',{name:/Nome do Item/}).inputValue(),'',
+   'Trocar para material não pode carregar o nome SINAPI do serviço');
+ await page.getByRole('button',{name:'Serviço',exact:true}).click();
+ await page.getByRole('button',{name:'Pesquisar todos os serviços SINAPI'}).click().catch(()=>{});
+ const floorPickerAgain=page.getByRole('region',{name:'Biblioteca SINAPI de serviços'});
+ await floorPickerAgain.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
+ await floorPickerAgain.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
+ await page.getByLabel('UF para o serviço SINAPI').selectOption('PR');
+ await page.getByLabel('Encargos para o serviço SINAPI').selectOption('com_desoneracao');
+ await page.getByText(/Custo importado: R\$\s*148,29/).waitFor({timeout:12000});
+ assert.equal(await page.getByPlaceholder('0.00').inputValue(),'148.29');
+ assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'148.29');
+ await page.getByPlaceholder('0.00').fill('230');
+ await page.getByPlaceholder('0.00').press('Tab');
+ await page.getByRole('button',{name:'Adicionar ao Catálogo'}).click();
+ await page.waitForTimeout(1200);
+ const floorSaved=fixture.payload.catalog.find(entry=>entry.sinapiComposition?.code==='104596');
+ assert.ok(floorSaved,'Piso SINAPI 104596 deve ser salvo como serviço vinculado');
+ assert.equal(floorSaved.type,'servico');
+ assert.equal(floorSaved.unit,'M2');
+ assert.equal(floorSaved.price,230,'Preço manual altera proposta sem alterar custo SINAPI');
+ assert.equal(floorSaved.cost,148.29);
+ assert.equal(floorSaved.sinapiComposition.uf,'PR');
+ assert.equal(floorSaved.sinapiComposition.regime,'com_desoneracao');
+
  // Orçamento também pode escolher qualquer composição da base global,
  // mesmo sem estar cadastrada no catálogo pessoal.
  await nav.getByRole('button',{name:'Orçamentos'}).click();
@@ -127,7 +176,7 @@ await price.fill('180');await price.press('Tab');
  await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
  await page.getByText(/SINAPI 100860.*HH referenciais/).waitFor({timeout:13000});
  await page.waitForTimeout(1200);
- assert.equal(fixture.payload.catalog.length,2,'Composição escolhida no orçamento também é salva no catálogo');
+ assert.equal(fixture.payload.catalog.length,3,'Composição escolhida no orçamento também é salva no catálogo');
  const saved=fixture.payload.catalog.find(entry=>entry.sinapiComposition?.code==='100860');
  assert.ok(saved,'Novo serviço SINAPI deve ser persistido no catálogo');
  assert.equal(saved.price,240,'Valor comercial editado prevalece sobre custo oficial');
@@ -136,5 +185,5 @@ await price.fill('180');await price.press('Tab');
  assert.ok(consultedCosts.some(q=>q.code==='91991'&&q.uf==='SP'));
  assert.ok(consultedCosts.some(q=>q.code==='100860'&&q.uf==='SP'));
  assert.deepEqual(errors,[]);
- console.log('PASS Android: 9.136 composições, custo SINAPI SP CSD auto preenchido, valores editáveis preservados e HH, preço distinto do custo no orçamento');
+ console.log('PASS Android: 9.136 composições, 104596 PR CCD publicado R$148.29 sem import privado, tipos isolados, custos e venda editáveis e HH');
 }finally{await browser.close();}
