@@ -65,7 +65,7 @@ test('a missing worker leaves unpriced HH rather than falsely claiming full cost
 });
 test('no declared monthly work hours => salary is unpriced and flagged, not guessed',()=>{
  let t=setTaskCrewEmployee(baseTask('x',10,1),key,'month',true,company);
- const result=forecast([t],undefined,undefined);
+ const result=forecast([t],0,0);
  assert.equal(result.allocatedMonthly,0);
  assert.equal(result.assignedHH,15);
  assert.ok(result.issues.some(m=>m.includes('Defina dias/mês')));
