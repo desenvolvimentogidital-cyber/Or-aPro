@@ -59,8 +59,10 @@ try{
   assert.equal(cache.offline,true);
   assert.equal(cache.private,false);
   await context.setOffline(true);
-  await page.goto(base,{waitUntil:'domcontentloaded'});
-  await page.getByText('OrçaPro está sem internet').waitFor({timeout:8000});
+  await page.goto(base+'?pwa_offline_check='+Date.now(),{waitUntil:'domcontentloaded'});
+  await page.getByText('OrçaPro está sem internet').waitFor({timeout:8000}).catch(async error=>{
+    throw Error('Offline fallback did not appear. URL='+page.url()+' title='+await page.title()+' body='+String(await page.locator('body').innerText()).slice(0,420)+'; '+error.message);
+  });
   assert.deepEqual(errors,[]);
   console.log('PASS Android PWA: manifest+PNG, real install prompt, instructions, service worker without private data and clear offline notice');
 }finally{await browser.close();}
