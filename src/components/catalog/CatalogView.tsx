@@ -560,7 +560,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                       <button type="button" aria-pressed={sinapiPricingScope==='complete'}
                         onClick={()=>{if(sinapiPricingScope==='complete')return;
                           if(itemToEdit)setItemToEdit(null);
-                          setSinapiPricingScope('complete');
+                          setSinapiPricingScope('complete');setLocalAdjustment(0);
                           salePriceEdited.current=false;directCostEdited.current=false;
                           setPrice(0);setCost('');
                           setName(`SINAPI ${selectedSinapi.code} · ${selectedSinapi.description}`);
@@ -571,7 +571,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                       <button type="button" aria-pressed={sinapiPricingScope==='labor_only'}
                         onClick={()=>{if(sinapiPricingScope==='labor_only')return;
                           if(itemToEdit)setItemToEdit(null);
-                          setSinapiPricingScope('labor_only');
+                          setSinapiPricingScope('labor_only');setLocalAdjustment(0);
                           salePriceEdited.current=false;directCostEdited.current=false;
                           // Custos H já consultados enquanto a modalidade completa estava visível:
                           // preencher imediatamente e evitar campos vazios até o próximo efeito.
