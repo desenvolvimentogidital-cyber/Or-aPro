@@ -22,7 +22,7 @@ export const CompanySettingsView: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateCompany(formData);
+    updateCompany({...formData,employees:company.employees});
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };

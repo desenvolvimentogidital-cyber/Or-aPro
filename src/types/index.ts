@@ -18,6 +18,7 @@ export interface CatalogItem {
   costConfirmed?: boolean; // Diferencia custo zero declarado do campo não informado
   sinapiComposition?: import('./schedule').SinapiComposition; // Analítico com HH explicitamente associado pelo operador
   sinapiPricingScope?: 'complete' | 'labor_only'; // Serviço completo ou apenas execução (materiais do cliente)
+  sinapiLocalAdjustmentPercent?:number; // Ajuste comercial da cidade; NÃO custo SINAPI oficial
 }
 
 export interface QuoteItem {
@@ -35,6 +36,7 @@ export interface QuoteItem {
   catalogItemId?: string; // ID de origem do catálogo (itens antigos não possuem)
   sinapiComposition?: import('./schedule').SinapiComposition; // Snapshot opcional da referência confirmada
   sinapiPricingScope?: 'complete' | 'labor_only'; // Snapshot do que foi incluído no fornecimento
+  sinapiLocalAdjustmentPercent?:number; // Snapshot da decisão comercial local
 }
 
 export interface Client {
@@ -104,7 +106,27 @@ export interface MonthlyExpense {
   amount: number;
 }
 
+/** Dados privados da equipe, persistidos na conta e nunca incluídos em proposta pública. */
+export interface EmployeeCost {
+  id:string;
+  name:string;
+  role:string;
+  sinapiCode?:string;
+  paymentBasis:'monthly'|'hourly';
+  /** Valor REAL definido pela empresa, distinto do custo de referência SINAPI. */
+  paymentAmount:number;
+  /** Custos patronais/benefícios informados pela empresa; não são presumidos. */
+  monthlyExtras:number;
+  /** Previsão operacional apenas para horistas, zero quando ainda não planejado. */
+  plannedHoursPerMonth:number;
+  reference?: {
+    code:string;uf:string;regime:'sem_desoneracao'|'com_desoneracao';
+    competence:string;hourlyCost:number;sourceFile:string;
+  };
+}
+
 export interface CompanySettings {
+  employees?:EmployeeCost[]; // Equipe e salários reais, isolados da movimentação financeira
   /** Dias trabalhados por mês para ratear custos fixos (configuração voluntária). */
   pricingWorkDaysPerMonth?: number;
   /** Horas por dia; o total do mês é calculado, não duplicado no cadastro. */

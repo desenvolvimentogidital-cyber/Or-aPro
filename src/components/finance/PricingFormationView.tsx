@@ -20,6 +20,8 @@ import { pricingEstimate, newId } from '../../utils/quoteMath';
 import { calculateBdi, type BdiRates } from '../../utils/bdi';
 import { pricingWorkload } from '../../utils/pricingWorkload';
 import { EditableNumericInput } from '../common/EditableNumericInput';
+import { CompanyEmployeesSection } from './CompanyEmployeesSection';
+import {employeeMonthlyCosts} from '../../utils/employeeCosts';
 
 export const PricingFormationView: React.FC = () => {
   const { expenses, addExpense, deleteExpense, company, updateCompany, ready, syncStatus } = useApp();
@@ -49,7 +51,10 @@ export const PricingFormationView: React.FC = () => {
     catch(e){bdiError=e instanceof Error?e.message:'Parâmetros de BDI inválidos';}
   }
 
-  const totalMonthlyExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const staffCosts=employeeMonthlyCosts(company.employees||[]);
+  const baseCompanyExpenses=expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const possiblePayrollDuplicates=expenses.filter(v=>/funcion[aá]rios?|folha|sal[aá]rios?|pessoal/i.test(v.name+' '+v.category));
+  const totalMonthlyExpenses=baseCompanyExpenses+staffCosts.fixed;
   let costPerDay = 0, costPerHour = 0, markupMultiplier = 0, jobDirectCost = 0, recommendedQuotePrice = 0, estimatedProfit = 0;
   let calculationError = '';
   if (workSchedule.valid) try {
@@ -172,6 +177,7 @@ export const PricingFormationView: React.FC = () => {
         <p className="text-[11px] text-amber-300">Fórmula adotada: [(1+AC+S+R+G) × (1+DF) × (1+L) ÷ (1−I)] − 1, com percentuais em fração decimal. Revise as exigências contratuais, tributárias, jurisprudência e regime específico (inclusive desoneração) com profissional habilitado.</p>
       </section> : activeTab === 'custos-mensais' ? (
         <div className="space-y-4">
+          <CompanyEmployeesSection/>
           {/* Summary Cards */}
           <div className="grid grid-cols-3 gap-2">
             <div className="p-3 rounded-2xl bg-[#141822] border border-white/5 text-center">
@@ -179,7 +185,7 @@ export const PricingFormationView: React.FC = () => {
               <span className="text-sm font-black text-white block mt-0.5">
                 {formatCurrency(totalMonthlyExpenses)}
               </span>
-              <span className="text-[10px] text-slate-500">Total Fixo</span>
+              <span className="text-[10px] text-slate-500">Despesas + mensalistas</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-[#141822] border border-white/5 text-center">
@@ -199,9 +205,19 @@ export const PricingFormationView: React.FC = () => {
             </div>
           </div>
 
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-slate-300">
+            <div className="flex justify-between gap-2"><span>Outras despesas fixas</span><strong>{formatCurrency(baseCompanyExpenses)}</strong></div>
+            <div className="mt-1 flex justify-between gap-2"><span>Mensalistas + benefícios fixos dos horistas</span><strong>{formatCurrency(staffCosts.fixed)}</strong></div>
+            <div className="mt-1 flex justify-between gap-2"><span>Horistas previstos (variável, fora do rateio fixo)</span><strong>{formatCurrency(staffCosts.variableEstimate)}</strong></div>
+            <p className="mt-2 text-[11px] text-amber-200">O rateio usa despesas + folha e custos recorrentes. Horistas por horas trabalhadas ficam fora do rateio fixo. Não cadastre o mesmo salário também em Despesas Mensais.</p>
+            {possiblePayrollDuplicates.length>0&&(company.employees?.length||0)>0&&
+              <p role="alert" className="mt-2 rounded-lg border border-amber-500/35 bg-amber-500/10 p-2 text-[11px] text-amber-100">
+                Atenção: há {possiblePayrollDuplicates.length} despesa(s) cadastrada(s) como funcionário, salário ou folha. Confira se já estão incluídas no novo cadastro de equipe; não removi valores anteriores automaticamente.
+              </p>}
+          </div>
           {/* Add Expense Form */}
           <div className="p-4 rounded-2xl bg-[#141822] border border-white/5">
-            <h3 className="text-xs font-bold text-white mb-2.5">Adicionar Despesa Mensal</h3>
+            <h3 className="text-xs font-bold text-white mb-2.5">Adicionar outra despesa mensal (não repetir funcionários)</h3>
             <form onSubmit={handleAddExpense} className="grid grid-cols-12 gap-2">
               <div className="col-span-6">
                 <input

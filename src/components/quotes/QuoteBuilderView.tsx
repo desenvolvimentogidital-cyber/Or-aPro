@@ -2,6 +2,7 @@ import React, { useEffect,useRef,useState } from 'react';
 import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
 import {SinapiReferencePicker} from '../catalog/SinapiReferencePicker';
 import {useSinapiLaborOnlyLookup} from '../../utils/useSinapiLaborOnlyLookup';
+import {sinapiLocalSalePrice} from '../../utils/sinapiLocalSale';
 import type {SinapiComposition} from '../../types/schedule';
 import {sinapiUFs,withSinapiProvenance,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
 import { useApp } from '../../context/AppContext';
@@ -56,6 +57,7 @@ export const QuoteBuilderView: React.FC = () => {
   const [pickedSinapi,setPickedSinapi]=useState<SinapiComposition|null>(null);
   const [sinapiPrice,setSinapiPrice]=useState(0);
   const [sinapiPricingScope,setSinapiPricingScope]=useState<'complete'|'labor_only'>('complete');
+  const [localAdjustment,setLocalAdjustment]=useState(0);
   const [sinapiCost,setSinapiCost]=useState(0);
   const [sinapiCostConfirmed,setSinapiCostConfirmed]=useState(false);
   const sinapiSaleEdited=useRef(false);
@@ -75,8 +77,8 @@ export const QuoteBuilderView: React.FC = () => {
     if(!sinapiCostEdited.current){
       setSinapiCost(cost.unitCost);setSinapiCostConfirmed(true);
     }
-    if(!sinapiSaleEdited.current)setSinapiPrice(cost.unitCost);
-  },[sinapiLookup.cost,pickedSinapi?.code,sinapiUF,sinapiRegime,sinapiPricingScope]);
+    if(!sinapiSaleEdited.current)setSinapiPrice(sinapiLocalSalePrice(cost.unitCost,localAdjustment));
+  },[sinapiLookup.cost,pickedSinapi?.code,sinapiUF,sinapiRegime,sinapiPricingScope,localAdjustment]);
   useEffect(()=>{
     const result=laborLookup.value;
     if(sinapiPricingScope!=='labor_only'||!pickedSinapi||
@@ -86,8 +88,8 @@ export const QuoteBuilderView: React.FC = () => {
     if(!sinapiCostEdited.current){
       setSinapiCost(result.unitCost);setSinapiCostConfirmed(true);
     }
-    if(!sinapiSaleEdited.current)setSinapiPrice(result.unitCost);
-  },[laborLookup.value,pickedSinapi?.code,sinapiUF,sinapiRegime,sinapiPricingScope]);
+    if(!sinapiSaleEdited.current)setSinapiPrice(sinapiLocalSalePrice(result.unitCost,localAdjustment));
+  },[laborLookup.value,pickedSinapi?.code,sinapiUF,sinapiRegime,sinapiPricingScope,localAdjustment]);
   const [sinapiAddError,setSinapiAddError]=useState('');
 
   // Additional costs & adjustments
@@ -163,7 +165,8 @@ export const QuoteBuilderView: React.FC = () => {
           laborType: catalogItem.laborType,
           catalogItemId: catalogItem.id,
           sinapiComposition: catalogItem.sinapiComposition,
-          sinapiPricingScope:catalogItem.sinapiPricingScope
+          sinapiPricingScope:catalogItem.sinapiPricingScope,
+          sinapiLocalAdjustmentPercent:catalogItem.sinapiLocalAdjustmentPercent
         }
       ];
     });
@@ -181,6 +184,7 @@ export const QuoteBuilderView: React.FC = () => {
       sameCode.find(item=>(item.sinapiPricingScope||'complete')==='complete') ||
       sameCode[0];
     setSinapiPricingScope(previously?.sinapiPricingScope||'complete');
+    setLocalAdjustment(previously?.sinapiLocalAdjustmentPercent||0);
     setSinapiPrice(previously?.price||0);
     setSinapiCost(previously?.cost||0);
     setSinapiCostConfirmed(previously?.costConfirmed||false);
@@ -227,10 +231,10 @@ export const QuoteBuilderView: React.FC = () => {
         category:categoryLabel(composition),price:sinapiPrice,unit:composition.unit,
         cost:sinapiCostConfirmed?sinapiCost:undefined,costConfirmed:sinapiCostConfirmed,
         description:`Composição analítica ${composition.reference}; HH oficiais do arquivo ${composition.sourceFile}. Preço comercial declarado pelo usuário.`,
-        sinapiComposition:composition,sinapiPricingScope
+        sinapiComposition:composition,sinapiPricingScope,sinapiLocalAdjustmentPercent:localAdjustment
       };
       if(!known)addCatalogItem(catalogItem);
-      handleAddItemFromCatalog({...catalogItem,price:sinapiPrice,sinapiPricingScope,
+      handleAddItemFromCatalog({...catalogItem,price:sinapiPrice,sinapiPricingScope,sinapiLocalAdjustmentPercent:localAdjustment,
         cost:sinapiCostConfirmed?sinapiCost:undefined,costConfirmed:sinapiCostConfirmed},true);
       setPickedSinapi(null);setSinapiAddError('');
     }catch(err){
@@ -850,7 +854,7 @@ export const QuoteBuilderView: React.FC = () => {
                       <button type="button" aria-pressed={sinapiPricingScope==='complete'}
                         className={`min-h-11 rounded-lg border p-2 text-[11px] font-semibold ${sinapiPricingScope==='complete'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}
                         onClick={()=>{if(sinapiPricingScope==='complete')return;
-                          setSinapiPricingScope('complete');
+                          setSinapiPricingScope('complete');setLocalAdjustment(0);
                           sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
                           setSinapiPrice(0);setSinapiCost(0);setSinapiCostConfirmed(false);
                           setSinapiAddError('');
@@ -858,7 +862,7 @@ export const QuoteBuilderView: React.FC = () => {
                       <button type="button" aria-pressed={sinapiPricingScope==='labor_only'}
                         className={`min-h-11 rounded-lg border p-2 text-[11px] font-semibold ${sinapiPricingScope==='labor_only'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}
                         onClick={()=>{if(sinapiPricingScope==='labor_only')return;
-                          setSinapiPricingScope('labor_only');
+                          setSinapiPricingScope('labor_only');setLocalAdjustment(0);
                           sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
                           const current=laborLookup.status==='ready'&&
                             laborLookup.value?.source.uf===sinapiUF&&
@@ -941,6 +945,23 @@ export const QuoteBuilderView: React.FC = () => {
                       {sinapiLookup.cost.unitCost>=laborLookup.value!.unitCost!&&<div className="flex justify-between gap-2"><span>Demais custos (material/equipamento/outros)</span><strong>{formatCurrency(Math.round((sinapiLookup.cost.unitCost-laborLookup.value!.unitCost!)*100)/100)}</strong></div>}
                     </div>}
                   {sinapiPricingScope==='complete'&&sinapiLookup.status==='missing'&&laborLookup.status==='ready'&&<p className="text-[11px] text-sky-200">Sem custo integral nesta UF, mas mão de obra calculada em {formatCurrency(laborLookup.value!.unitCost!)}. Se o cliente fornece material, escolha “Só mão de obra”.</p>}
+                  <label className="block text-xs text-slate-200">Ajuste comercial da cidade/obra (% opcional)
+                    <EditableNumericInput min={0} value={localAdjustment} emptyAsBlank
+                      onCommit={value=>{
+                        if(!Number.isFinite(value)||value>300)return;
+                        setLocalAdjustment(value);
+                        const base=sinapiPricingScope==='complete'
+                          ?(sinapiLookup.cost?.code===pickedSinapi.code && sinapiLookup.cost.source.uf===sinapiUF &&
+                              sinapiLookup.cost.source.regime===sinapiRegime?sinapiLookup.cost.unitCost:null)
+                          :(laborLookup.value?.source.uf===sinapiUF&&laborLookup.value?.source.regime===sinapiRegime
+                              ?laborLookup.value.unitCost:null);
+                        if(base!==null&&base!==undefined){
+                          setSinapiPrice(sinapiLocalSalePrice(base,value));sinapiSaleEdited.current=false;
+                        }
+                      }} aria-label="Ajuste comercial local do orçamento SINAPI"
+                      className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] px-3 text-white"/>
+                  </label>
+                  <p className="text-[10px] text-slate-400">Ajuste escolhido pela empresa, não um custo de referência oficial da cidade.</p>
                   <p className="text-[10px] text-amber-200">{sinapiPricingScope==='labor_only'?'Mão de obra por HH × custo/h com encargos; materiais não entram.':'Custo integral da composição.'} A margem comercial é definida por você.</p>
                   {sinapiAddError&&<p role="alert" className="text-xs text-rose-200">{sinapiAddError}</p>}
                   <button type="button" onClick={addSinapiToQuote}

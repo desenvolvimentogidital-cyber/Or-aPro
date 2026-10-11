@@ -146,6 +146,11 @@ await price.fill('180');await price.press('Tab');
  await page.getByText(/Custo importado: R\$\s*148,29/).waitFor({timeout:12000});
  assert.equal(await page.getByPlaceholder('0.00').inputValue(),'148.29');
  assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'148.29');
+ const localAdjust=page.getByLabel('Ajuste comercial local do serviço SINAPI');
+ await localAdjust.fill('20');await localAdjust.press('Tab');
+ assert.equal(await page.getByPlaceholder('0.00').inputValue(),'177.95',
+   'Ajuste local de 20% é comercial, não afeta custo SINAPI');
+ assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'148.29');
  await page.getByPlaceholder('0.00').fill('230');
  await page.getByPlaceholder('0.00').press('Tab');
  await page.getByRole('button',{name:'Adicionar ao Catálogo'}).click();
@@ -194,7 +199,10 @@ await price.fill('180');await price.press('Tab');
  const sale=page.getByLabel('Preço de venda do serviço SINAPI');
  assert.equal(await sale.inputValue(),'172.03');
  assert.equal(await page.getByLabel('Custo unitário do serviço SINAPI').inputValue(),'172.03');
-
+ const localQuote=page.getByLabel('Ajuste comercial local do orçamento SINAPI');
+ await localQuote.fill('10');await localQuote.press('Tab');
+ assert.equal(await sale.inputValue(),'189.23');
+ assert.equal(await page.getByLabel('Custo unitário do serviço SINAPI').inputValue(),'172.03');
  await sale.fill('240');await sale.press('Tab');
  await page.getByRole('button',{name:'Adicionar serviço SINAPI ao orçamento'}).click();
  await page.getByText(/SINAPI 100860.*HH referenciais/).waitFor({timeout:13000});
