@@ -37,6 +37,29 @@ psql -v ON_ERROR_STOP=1 -c 'TRUNCATE public.orcapro_sinapi_published_unit_costs;
 psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
 # Segunda importação comprova idempotência e ausência de preços duplicados.
 psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
+# Se o mesmo código+unidade já estiver classificado de modo diferente,
+# abortar TODA a transação sem sobrescrever os dados existentes.
+psql -v ON_ERROR_STOP=1 -c "UPDATE public.orcapro_sinapi_published_inputs SET classification='OUTROS' WHERE reference='09/2026' AND code='1000' AND unit='UN';"
+if psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql > /tmp/orcapro-sinapi-classification.log 2>&1; then
+  echo "::error::Importação aceitou classificação de insumo divergente"
+  exit 1
+fi
+if ! grep -q 'Classificação de insumo publicado divergente' /tmp/orcapro-sinapi-classification.log; then
+  cat /tmp/orcapro-sinapi-classification.log
+  echo "::error::Erro inesperado no contrato de classificação"
+  exit 1
+fi
+psql -v ON_ERROR_STOP=1 <<'SQL'
+DO $BEGIN
+ IF (SELECT classification FROM public.orcapro_sinapi_published_inputs
+     WHERE reference='09/2026' AND code='1000' AND unit='UN') <> 'OUTROS' THEN
+    RAISE EXCEPTION 'Conflito alterou classificação original';
+ END IF;
+END $;
+UPDATE public.orcapro_sinapi_published_inputs SET classification='MATERIAL'
+ WHERE reference='09/2026' AND code='1000' AND unit='UN';
+SQL
+psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
 psql -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 BEGIN

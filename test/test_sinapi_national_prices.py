@@ -78,6 +78,7 @@ class NationalPrices(unittest.TestCase):
             self.assertNotIn('PR',data['composicoes'][('100001','M2')]['costs']['sem_desoneracao'])
             sql=p.sql_import(Path(d),'09/2026')
             self.assertIn('Preço publicado divergente',sql)
+            self.assertIn('Classificação de insumo publicado divergente',sql)
             self.assertIn('ON CONFLICT (reference,code,unit)',sql)
             self.assertIn('COMMIT;',sql)
             p.csv_file(Path(d)/'insumos.csv',data['insumos'],x.name)

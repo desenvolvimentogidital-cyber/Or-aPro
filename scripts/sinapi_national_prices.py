@@ -171,7 +171,14 @@ def sql_import(folder,reference):
       ('insumos','public.orcapro_sinapi_published_inputs',
        'reference,code,unit,classification,costs_in_cents,source_file')):
         temp='sinapi_stage_'+kind
-        file=(folder/(kind+'.csv')).resolve().as_posix().replace("'","''")
+        file=(folder/(kind+'.csv')).resolve().as_posix().replace("'", "''")
+        # Preços iguais NÃO bastam: código/unidade com classificação divergente
+        # deve abortar a transação, sem reescrever o cadastro já publicado.
+        classification_check = (f"""IF EXISTS (
+                SELECT 1 FROM {temp} s JOIN {table} t USING (reference,code,unit)
+                WHERE upper(trim(s.classification)) <> upper(trim(t.classification))
+              ) THEN RAISE EXCEPTION 'Classificação de insumo publicado divergente; revisar manualmente'; END IF;"""
+              if kind=='insumos' else '')
         sql.extend([
             f'CREATE TEMP TABLE {temp} (LIKE {table} INCLUDING DEFAULTS) ON COMMIT DROP;',
             f"\\copy {temp} ({cols}) FROM '{file}' WITH (FORMAT csv, ENCODING 'UTF8');",
@@ -185,7 +192,8 @@ def sql_import(folder,reference):
                 WHERE (s.costs_in_cents #>> ARRAY[regime.key,uf.key]) IS NULL
                    OR (s.costs_in_cents #>> ARRAY[regime.key,uf.key])::numeric <> uf.value::numeric
               ) THEN RAISE EXCEPTION 'Preço publicado divergente em {kind}; revisar manualmente'; END IF;
-            END $$;""",
+              {classification_check}
+            END $;""",
             f"""INSERT INTO {table} ({cols}) SELECT {cols} FROM {temp}
               ON CONFLICT (reference,code,unit) DO UPDATE SET costs_in_cents =
               jsonb_build_object(
