@@ -40,3 +40,8 @@ jobs:
         run: psql -v ON_ERROR_STOP=1 -f supabase/schema.sql
       - name: Testar RLS e RPC de propostas
         run: psql -v ON_ERROR_STOP=1 -f test/sql/security-contract.sql
+      - name: Validar migrações de insumos e Analítico SINAPI em Postgres efêmero
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011_sinapi_national_inputs_price_reference.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011_sinapi_national_analytical_items.sql
+          psql -v ON_ERROR_STOP=1 -f test/sql/sinapi-national-security.sql
