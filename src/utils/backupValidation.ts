@@ -1,6 +1,6 @@
 import type {WorkspaceData} from '../types/workspace';
 import type {EmployeeCost} from '../types';
-import {validateEmployeeCost} from './employeeCosts';
+import {validateEmployeeCost} from './employeeCosts.js';
 
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function ensureRecords(value: unknown,name:string,max=30000): asserts value is Record<string,unknown>[] {
