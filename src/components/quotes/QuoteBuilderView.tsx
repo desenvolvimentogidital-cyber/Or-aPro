@@ -183,6 +183,13 @@ export const QuoteBuilderView: React.FC = () => {
       (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
     setSinapiRegime(previously?.sinapiComposition?.regime||'');
   };
+  const resetRegionalQuoteCost=()=>{
+    // Nunca reutilizar preço automático de outro estado ou regime.
+    // Valor explicitamente editado pela pessoa permanece inalterado.
+    if(!sinapiSaleEdited.current)setSinapiPrice(0);
+    if(!sinapiCostEdited.current){setSinapiCost(0);setSinapiCostConfirmed(false);}
+    setSinapiAddError('');
+  };
   const addSinapiToQuote=()=>{
     if(!pickedSinapi)return;
     if((sinapiPricingScope==='complete'?sinapiLookup.status:laborLookup.status)==='loading'&&!sinapiSaleEdited.current&&!sinapiCostEdited.current){
@@ -900,14 +907,14 @@ export const QuoteBuilderView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-[11px] text-slate-200">UF da obra
                       <select aria-label="UF da composição SINAPI no orçamento" value={sinapiUF}
-                        onChange={e=>setSinapiUF(e.target.value as SinapiUF|'')}
+                        onChange={e=>{resetRegionalQuoteCost();setSinapiUF(e.target.value as SinapiUF|'');}}
                         className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
                         <option value="">Selecionar</option>{sinapiUFs.map(uf=><option key={uf} value={uf}>{uf}</option>)}
                       </select>
                     </label>
                     <label className="block text-[11px] text-slate-200">Encargos
                       <select aria-label="Encargos da composição SINAPI no orçamento" value={sinapiRegime}
-                        onChange={e=>setSinapiRegime(e.target.value as SinapiRegime|'')}
+                        onChange={e=>{resetRegionalQuoteCost();setSinapiRegime(e.target.value as SinapiRegime|'');}}
                         className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] p-2 text-white">
                         <option value="">Selecionar</option>
                         <option value="sem_desoneracao">Sem desoneração</option>
