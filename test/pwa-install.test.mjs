@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
+import {runInNewContext} from 'node:vm';
 
 const root=process.cwd();
 const manifest=JSON.parse(readFileSync(join(root,'public/manifest.webmanifest'),'utf8'));
@@ -51,4 +52,37 @@ test('service worker always fetches data online and never caches private content
   assert.match(readFileSync(join(root,'public/offline.html'),'utf8'),/precisa de conexão/);
   assert.match(readFileSync(join(root,'src/main.tsx'),'utf8'),/import\.meta\.env\.PROD/);
   assert.ok(vercel.headers.some(h=>h.source==='/sw.js'&&h.headers.some(e=>e.key==='Cache-Control'&&e.value.includes('no-store'))));
+});
+
+test('service worker returns explicit offline page on network failure and never intercepts API calls',async()=>{
+  const callbacks=new Map();
+  const cached=new Map([['/offline.html',new Response('OrçaPro está sem internet',{headers:{'content-type':'text/html'}})]]);
+  const cache={add:async()=>{},match:async key=>cached.get(key)};
+  let networkCalls=0;
+  const worker={
+    location:{origin:'https://or-a-pro-seven.vercel.app'},
+    addEventListener:(type,handler)=>callbacks.set(type,handler),
+    clients:{claim:async()=>{}},skipWaiting:async()=>{}
+  };
+  runInNewContext(sw,{self:worker,URL,Response,Promise,
+    caches:{open:async()=>cache,keys:async()=>[],delete:async()=>true},
+    fetch:async(request,options)=>{
+      networkCalls++;
+      assert.equal(options.cache,'no-store');
+      throw new Error('internet offline');
+    }
+  });
+  let answer;
+  callbacks.get('fetch')({
+    request:{mode:'navigate',method:'GET',url:'https://or-a-pro-seven.vercel.app/?proposta=public-token'},
+    respondWith:promise=>{answer=promise;}
+  });
+  assert.equal((await (await answer).text()),'OrçaPro está sem internet');
+  assert.equal(networkCalls,1);
+  let intercepted=false;
+  callbacks.get('fetch')({
+    request:{mode:'cors',method:'POST',url:'https://or-a-pro-seven.vercel.app/rest/v1/orcapro_workspaces'},
+    respondWith:()=>{intercepted=true;}
+  });
+  assert.equal(intercepted,false,'Authenticated API requests must bypass service worker');
 });
