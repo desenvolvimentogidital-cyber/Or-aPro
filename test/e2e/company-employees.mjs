@@ -55,7 +55,7 @@ try{
  await staff.getByPlaceholder('Ex.: Eletricista João ou Funcionário 01').fill('Eletricista da empresa');
  await staff.getByRole('combobox',{name:'Profissão SINAPI do funcionário'}).selectOption('88264');
  await staff.getByRole('combobox',{name:'Encargos SINAPI do funcionário'}).selectOption('com_desoneracao');
- await staff.getByText(/Referência SINAPI \\(custo com encargos\\):/).waitFor({timeout:10000})
+ await staff.getByText(/Referência SINAPI \(custo com encargos\):/).waitFor({timeout:10000})
   .catch(async err=>{throw Error('Referência não encontrada: '+String(await staff.innerText()).slice(0,1700)+'; '+err.message);});
  assert.match(await staff.innerText(),/40,25/);
  await staff.getByRole('combobox',{name:'Forma de pagamento'}).selectOption('hourly');
