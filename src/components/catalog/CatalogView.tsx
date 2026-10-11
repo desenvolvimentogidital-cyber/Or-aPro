@@ -568,7 +568,13 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                           if(itemToEdit)setItemToEdit(null);
                           setSinapiPricingScope('labor_only');
                           salePriceEdited.current=false;directCostEdited.current=false;
-                          setPrice(0);setCost('');
+                          // Custos H já consultados enquanto a modalidade completa estava visível:
+                          // preencher imediatamente e evitar campos vazios até o próximo efeito.
+                          const current=laborLookup.status==='ready'&&
+                            laborLookup.value?.source.uf===sinapiServiceUF&&
+                            laborLookup.value?.source.regime===sinapiServiceRegime
+                            ?laborLookup.value.unitCost:null;
+                          setPrice(current??0);setCost(current===null?'':String(current));
                           setName(`SINAPI ${selectedSinapi.code} · Mão de obra · ${selectedSinapi.description}`);
                         }}
                         className={`min-h-11 rounded-lg border px-2 text-[11px] font-semibold ${sinapiPricingScope==='labor_only'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}>
