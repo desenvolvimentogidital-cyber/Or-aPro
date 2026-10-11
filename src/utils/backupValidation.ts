@@ -1,4 +1,6 @@
 import type {WorkspaceData} from '../types/workspace';
+import type {EmployeeCost} from '../types';
+import {validateEmployeeCost} from './employeeCosts';
 
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 function ensureRecords(value: unknown,name:string,max=30000): asserts value is Record<string,unknown>[] {
@@ -17,6 +19,11 @@ export function validateWorkspaceBackup(input:unknown): WorkspaceData {
   if(input.schedules!==undefined)ensureRecords(input.schedules,'schedules',2000);
   if(input.financeEntries!==undefined)ensureRecords(input.financeEntries,'financeEntries',50000);
   if(!object(input.company)||typeof input.company.name!=='string')throw Error('Empresa inválida no backup.');
+  const staff=input.company.employees;
+  if(staff!==undefined){
+    ensureRecords(staff,'funcionários',200);
+    for(const e of staff as EmployeeCost[])validateEmployeeCost(e);
+  }
   if(input.lastQuoteNumber!==undefined&&(!Number.isSafeInteger(input.lastQuoteNumber)||Number(input.lastQuoteNumber)<0))throw Error('Numeração de orçamentos inválida.');
   for(const q of input.quotes as Record<string,unknown>[]){
     if(typeof q.number!=='string'||typeof q.clientId!=='string'||!monetary(q.total)||!Array.isArray(q.items)||q.items.length>5000)throw Error('Orçamento inválido no backup.');
