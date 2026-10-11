@@ -44,6 +44,7 @@
     "src/utils/scheduleSelection.ts",
     "src/utils/execution.ts",
     "src/utils/financeMetrics.ts",
+    "src/utils/workFinanceComparison.ts",
     "src/types/finance.ts",
     "src/utils/sinapi.ts",
     "src/utils/csvExport.ts",
