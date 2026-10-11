@@ -38,6 +38,7 @@ import { QuotePreviewModal } from '../quotes/QuotePreviewModal';
 import { MoreMenuDrawer } from '../menu/MoreMenuDrawer';
 import { NotificationsDrawer } from '../notifications/NotificationsDrawer';
 import {useSelectNumericOnFocus} from '../../utils/numericEditing';
+import {InstallAppButton} from '../common/InstallAppButton';
 
 export const AppLayout: React.FC = () => {
   useSelectNumericOnFocus();
@@ -104,7 +105,7 @@ export const AppLayout: React.FC = () => {
         <span className={syncStatus === 'error' ? 'text-rose-400' : syncStatus === 'saving' ? 'text-amber-300' : 'text-emerald-300'} role="status">
           {syncStatus === 'error' ? '⚠ Erro de sincronização' : !ready ? '☁ Conectando à conta…' : syncStatus === 'saving' ? '☁ Salvando na nuvem…' : '☁ Dados na nuvem'}
         </span>
-        <div className="flex items-center gap-3"><BackupPanel />{session && <button className="text-slate-300 underline" onClick={() => { if (syncStatus !== 'saved' && !window.confirm('Há alterações não sincronizadas. Exporte um backup antes de sair. Deseja continuar?')) return; void logout(); }}>Sair</button>}</div>
+        <div className="flex flex-wrap items-center justify-end gap-2"><InstallAppButton/><BackupPanel />{session && <button className="text-slate-300 underline" onClick={() => { if (syncStatus !== 'saved' && !window.confirm('Há alterações não sincronizadas. Exporte um backup antes de sair. Deseja continuar?')) return; void logout(); }}>Sair</button>}</div>
       </div>
       {!ready && syncStatus === 'error' && <div role="alert" className="text-rose-200 text-xs px-3 py-2 w-full max-w-6xl">Falha ao carregar dados protegidos. <button className="underline" onClick={() => window.location.reload()}>Recarregar conexão</button></div>}
       {syncError && <div role="alert" className="text-rose-200 text-xs px-3 py-2 bg-rose-950/90 w-full max-w-6xl">{syncError}. Exporte um backup antes de fechar. {ready && <button className="underline ml-2" onClick={() => { void retrySync(); }}>Tentar novamente</button>}</div>}

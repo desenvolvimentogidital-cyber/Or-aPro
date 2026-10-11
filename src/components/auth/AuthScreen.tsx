@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CalendarDays, Eye, EyeOff, FileText, HardHat, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { setRecoveredPassword } from '../../services/cloud';
+import {InstallAppButton} from '../common/InstallAppButton';
 
 type AuthMode = 'login' | 'register' | 'recover' | 'set-password';
 
@@ -96,6 +97,7 @@ export function AuthScreen() {
           <div className="mb-7 flex items-center gap-2 text-lg font-black text-orange-400 lg:hidden">
             <span className="grid h-9 w-9 place-items-center rounded-lg border border-orange-500/30 bg-orange-500/10 text-xl">◈</span> OrçaPro
           </div>
+          <div className="mb-4 flex items-center justify-start"><InstallAppButton/></div>
           <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-orange-400">Sua área de trabalho</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white sm:text-3xl">{heading}</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-400">{description}</p>
