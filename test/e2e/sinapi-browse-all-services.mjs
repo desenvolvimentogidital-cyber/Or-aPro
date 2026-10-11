@@ -164,7 +164,7 @@ await price.fill('180');await price.press('Tab');
  await laborPicker.getByLabel('Pesquisar serviços da tabela SINAPI').fill('104596');
  await laborPicker.getByRole('button',{name:/Selecionar SINAPI 104596/}).click();
  await page.getByRole('button',{name:'Somente mão de obra'}).click();
- await page.getByText(/Mão de obra estimada: R\\$\\s*55,66/).waitFor({timeout:13000});
+ await page.getByText(/Mão de obra estimada: R\$\s*55,66/).waitFor({timeout:13000});
  assert.equal(await page.getByPlaceholder('0.00').inputValue(),'55.66');
  assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'55.66');
  await page.getByPlaceholder('0.00').fill('95');await page.getByPlaceholder('0.00').press('Tab');
