@@ -956,7 +956,7 @@ export const QuoteBuilderView: React.FC = () => {
                           :(laborLookup.value?.source.uf===sinapiUF&&laborLookup.value?.source.regime===sinapiRegime
                               ?laborLookup.value.unitCost:null);
                         if(base!==null&&base!==undefined){
-                          setSinapiPrice(sinapiLocalSalePrice(base,value));sinapiSaleEdited.current=true;
+                          setSinapiPrice(sinapiLocalSalePrice(base,value));sinapiSaleEdited.current=false;
                         }
                       }} aria-label="Ajuste comercial local do orçamento SINAPI"
                       className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] px-3 text-white"/>
