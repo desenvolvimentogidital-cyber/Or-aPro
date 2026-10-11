@@ -20,7 +20,9 @@ self.addEventListener('fetch',event=>{
   if(request.mode!=='navigate'||request.method!=='GET')return;
   const url=new URL(request.url);
   if(url.origin!==self.location.origin)return;
-  event.respondWith(fetch(request).catch(async()=>{
+  // Force a real network check: Chromium may otherwise serve its HTTP cache
+  // while the phone is offline, leaving an empty React shell without assets.
+  event.respondWith(fetch(request,{cache:'no-store'}).catch(async()=>{
     const stored=await caches.open(CACHE);
     return await stored.match(OFFLINE) || Response.error();
   }));
