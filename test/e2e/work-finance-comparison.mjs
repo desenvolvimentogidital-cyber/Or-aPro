@@ -72,7 +72,7 @@ try{
  assert.equal(fixture.payload.financeEntries[0].scheduleId,'s1');
  assert.equal(fixture.payload.financeEntries[0].quoteId,'quote-1');
  assert.equal(fixture.payload.financeEntries[0].amount,550);
- await page.getByLabel('Movimento').selectOption('despesa');
+ await page.locator('form').locator('select').first().selectOption('despesa');
  await page.getByLabel('Vincular movimentação a uma obra').selectOption('s1');
  await page.getByLabel('Valor (R$)').fill('200');
  await page.getByLabel('Categoria').fill('Materiais');
