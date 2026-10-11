@@ -163,7 +163,7 @@ export const CompanyEmployeesSection:React.FC=()=>{
       {code&&lookupStatus==='missing'&&<p className="text-xs text-amber-200">Sem custo/h desta função para UF, mês e regime. Você pode informar o valor pago ou importar CSD/CCD em Serviços → Custos SINAPI.</p>}
       {activeRate&&<div className="space-y-1 rounded-xl border border-sky-500/25 bg-sky-500/5 p-3 text-xs">
         <strong className="block text-sky-200">Referência SINAPI (custo com encargos): {formatCurrency(activeRate.hourlyCost)}/h</strong>
-        <span className="block text-slate-300">{reference.source.uf} · {reference.source.reference} · {reference.source.regime==='com_desoneracao'?'Com desoneração':'Sem desoneração'}</span>
+        <span className="block text-slate-300">{activeRate.source.uf} · {activeRate.source.reference} · {activeRate.source.regime==='com_desoneracao'?'Com desoneração':'Sem desoneração'}</span>
         <span className="block text-slate-300">Equivalência mensal por jornada informada: {monthlyReference===null?'Informe dias e horas acima':formatCurrency(monthlyReference)}</span>
         <p className="text-[11px] text-amber-200">Referência de CUSTO da composição com encargos, não salário-base oficial nem obrigação trabalhista.</p>
       </div>}
