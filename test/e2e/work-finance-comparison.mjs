@@ -58,7 +58,7 @@ try{
  await page.goto(base,{waitUntil:'domcontentloaded'});
  const summary=await open();
  await summary.getByLabel('Selecionar obra para comparar custos').selectOption('s1');
- await summary.getByText(/item\(ns\) do orçamento sem custo confirmado/).waitFor();
+ await summary.getByText(/item\(ns\) do orçamento com custo pendente ou quantidade inválida/).waitFor();
  await summary.getByText(/lançamento\(s\) de.*75,00.*sem obra identificada/).waitFor();
  assert.match(await summary.innerText(),/R\$\s*400,00/);
  // Real payment for Obra da Vila: budget is selected automatically, never double-count s2.
