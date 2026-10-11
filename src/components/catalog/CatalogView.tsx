@@ -5,6 +5,7 @@ import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
 import {useSinapiLaborOnlyLookup} from '../../utils/useSinapiLaborOnlyLookup';
 import {sinapiLocalSalePrice} from '../../utils/sinapiLocalSale';
 import {SinapiReferencePicker} from './SinapiReferencePicker';
+import {SinapiCostBreakdownPanel} from '../catalog/SinapiCostBreakdownPanel';
 import type {SinapiComposition} from '../../types/schedule';
 import {categoryLabel} from '../../utils/sinapiCategories';
 import {withSinapiProvenance} from '../../utils/sinapiRegional';
@@ -626,6 +627,9 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   {inlinePriceProgress&&<p role="status" className="text-[11px] text-sky-200">{inlinePriceProgress}</p>}
                   {inlinePriceError&&<p role="alert" className="text-[11px] text-rose-200">{inlinePriceError}</p>}
                   </>}
+                  {sinapiServiceUF&&sinapiServiceRegime&&
+                    <SinapiCostBreakdownPanel key={selectedSinapi.code+'|'+sinapiServiceUF+'|'+sinapiServiceRegime}
+                      composition={selectedSinapi} uf={sinapiServiceUF} regime={sinapiServiceRegime}/>}
                   {sinapiPricingScope==='complete'&&sinapiLookup.cost&&laborLookup.value?.unitCost!==null&&laborLookup.status==='ready'&&
                     <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-2 text-[11px] text-slate-200">
                       <div className="flex justify-between gap-2"><span>Composição completa</span><strong>{formatCurrency(sinapiLookup.cost.unitCost)}</strong></div>
