@@ -193,7 +193,7 @@ def sql_import(folder,reference):
                    OR (s.costs_in_cents #>> ARRAY[regime.key,uf.key])::numeric <> uf.value::numeric
               ) THEN RAISE EXCEPTION 'Preço publicado divergente em {kind}; revisar manualmente'; END IF;
               {classification_check}
-            END $;""",
+            END $$;""",
             f"""INSERT INTO {table} ({cols}) SELECT {cols} FROM {temp}
               ON CONFLICT (reference,code,unit) DO UPDATE SET costs_in_cents =
               jsonb_build_object(
