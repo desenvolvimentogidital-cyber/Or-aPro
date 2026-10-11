@@ -12,6 +12,7 @@ export interface SavedSinapiUnitCost {
   unitCost:number;
   source:SinapiProvenance;
   sourceFile:string;
+  origin?:'personal'|'published';
 }
 async function call(session:Session,path:string,options:RequestInit={}):Promise<Response>{
   if(!origin||!apiKey||!session.access_token)throw Error('Faça login para acessar os preços SINAPI.');
@@ -93,6 +94,36 @@ export async function findOfficialSinapiCost(
   const rows=await response.json() as Array<{unit:string;unit_cost:string|number;source_file:string}>;
   const found=Array.isArray(rows)?rows.find(row=>sameServiceUnit(row.unit,composition.unit)
     &&Number.isFinite(Number(row.unit_cost))&&Number(row.unit_cost)>0):undefined;
-  if(!found)return null;
-  return {code:composition.code,unit:found.unit,unitCost:Number(found.unit_cost),source:{...source},sourceFile:found.source_file};
+  if(found)return {
+    code:composition.code,unit:found.unit,unitCost:Number(found.unit_cost),
+    source:{...source},sourceFile:found.source_file,origin:'personal'
+  };
+  // A composição analítica (HH) é pública, mas os custos monetários variam
+  // por UF, mês e regime. Consultar referências oficiais publicadas somente
+  // quando a conta não possui sua própria tabela de custos importada.
+  type PublishedRow={
+    unit:string;
+    costs_in_cents:Record<string,Record<string,number>>;
+    source_file:string;
+  };
+  const officialQuery=new URLSearchParams({
+    select:'unit,costs_in_cents,source_file',
+    reference:'eq.'+source.reference,code:'eq.'+composition.code,limit:'10'
+  });
+  const officialResponse=await call(session,
+    '/rest/v1/orcapro_sinapi_published_unit_costs?'+officialQuery.toString(),
+    {signal});
+  const officialRows=await officialResponse.json() as PublishedRow[];
+  if(!Array.isArray(officialRows))throw Error('Resposta inesperada da tabela de custos SINAPI.');
+  const official=officialRows.find(row=>
+    sameServiceUnit(row.unit,composition.unit) &&
+    Number.isSafeInteger(row.costs_in_cents?.[source.regime]?.[source.uf]) &&
+    row.costs_in_cents[source.regime][source.uf]>0
+  );
+  if(!official)return null;
+  return {
+    code:composition.code,unit:official.unit,
+    unitCost:official.costs_in_cents[source.regime][source.uf]/100,
+    source:{...source},sourceFile:official.source_file,origin:'published'
+  };
 }
