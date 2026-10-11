@@ -14,7 +14,7 @@ BEGIN
  IF has_table_privilege('anon','public.orcapro_shared_quotes','SELECT') THEN
  RAISE EXCEPTION 'Quote database must remain inaccessible to anonymous callers'; END IF;
 END $rpc_contract$;
-DO $
+DO $$
 BEGIN
   IF has_table_privilege('anon', 'public.orcapro_workspaces', 'SELECT') OR
      has_table_privilege('anon', 'public.orcapro_shared_quotes', 'SELECT') OR
