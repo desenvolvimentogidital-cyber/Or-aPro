@@ -23,6 +23,8 @@ export interface TaskCrewCost {
   allocatedMonthly:number;
   assignedHH:number;
   unassignedHH:number;
+  /** HH de funcionários vinculados com remuneração ausente ou inválida. */
+  unpricedAssignedHH:number;
   workers:WorkAssignmentLine[];
   warnings:string[];
 }
@@ -33,6 +35,8 @@ export interface WorkCrewCostReport {
   estimatedAssignedCost:number;
   assignedHH:number;
   unassignedHH:number;
+  /** HH de funcionários vinculados com remuneração ausente ou inválida. */
+  unpricedAssignedHH:number;
   issues:string[];
 }
 const round=(n:number)=>Math.round((n+Number.EPSILON)*100)/100;
@@ -79,7 +83,7 @@ export function estimateWorkCrewCosts(
   const usage=new Map<string,Array<{taskId:string;start:string;end:string}>>();
   for(const entry of report.entries){
     const current:TaskCrewCost={taskId:entry.task.id,compositionCode:entry.task.composition.code,
-      variableHourly:0,allocatedMonthly:0,assignedHH:0,unassignedHH:0,
+      variableHourly:0,allocatedMonthly:0,assignedHH:0,unassignedHH:0,unpricedAssignedHH:0,
       workers:[],warnings:[]};
     const assignments=entry.task.employeeAssignments||{};
     const usedInTask=new Set<string>();
@@ -123,13 +127,20 @@ export function estimateWorkCrewCosts(
           if(Number.isFinite(employee.paymentAmount)&&employee.paymentAmount>0){
             cost=round(hours*employee.paymentAmount);
             current.variableHourly+=cost;
-          }
-        }else if(workload.valid&&workload.hoursPerMonth>0&&Number.isFinite(employee.paymentAmount)&&employee.paymentAmount>0){
+          }else current.warnings.push(
+            `${employee.name}: informe um valor por hora maior que zero para estimar o custo.`);
+        }else if(!workload.valid||workload.hoursPerMonth<=0){
+          current.warnings.push(
+            `Defina dias/mês e horas/dia nos custos da empresa para ratear ${employee.name}.`);
+        }else if(!Number.isFinite(employee.paymentAmount)||employee.paymentAmount<=0){
+          current.warnings.push(
+            `${employee.name}: informe um salário mensal maior que zero para estimar o custo.`);
+        }else{
           // Alocação do salário, não uma nova despesa financeira.
           cost=round(hours*employee.paymentAmount/workload.hoursPerMonth);
           current.allocatedMonthly+=cost;
-        }else current.warnings.push(
-          `Defina dias/mês e horas/dia nos custos da empresa para ratear ${employee.name}.`);
+        }
+        if(cost===null)current.unpricedAssignedHH+=hours;
         current.workers.push({employeeId:id,employeeName:employee.name,
           roleKey:key,hours:round(hours),cost,paymentBasis:employee.paymentBasis});
         current.assignedHH+=hours;
@@ -147,6 +158,7 @@ export function estimateWorkCrewCosts(
     current.allocatedMonthly=round(current.allocatedMonthly);
     current.assignedHH=round(current.assignedHH);
     current.unassignedHH=round(current.unassignedHH);
+    current.unpricedAssignedHH=round(current.unpricedAssignedHH);
     entries.push(current);
   }
   // Mesmo CPF/nome NÃO é assumido por coincidência: usa somente IDs internos.
@@ -168,5 +180,6 @@ export function estimateWorkCrewCosts(
     estimatedAssignedCost:round(variableHourly+allocatedMonthly),
     assignedHH:round(entries.reduce((n,e)=>n+e.assignedHH,0)),
     unassignedHH:round(entries.reduce((n,e)=>n+e.unassignedHH,0)),
+    unpricedAssignedHH:round(entries.reduce((n,e)=>n+e.unpricedAssignedHH,0)),
     issues:[...new Set(entries.flatMap(e=>e.warnings))]};
 }

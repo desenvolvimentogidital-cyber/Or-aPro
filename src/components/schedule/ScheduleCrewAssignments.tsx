@@ -68,6 +68,7 @@ export const ScheduleCrewAssignments:React.FC<AssignProps>=({
         <strong className="text-sky-100">{formatCurrency(costs.allocatedMonthly)}</strong>
       </div>
       <p className="col-span-2 text-slate-400">{fmt(costs.assignedHH)} HH alocadas; {fmt(costs.unassignedHH)} HH sem funcionário identificado nesta etapa.</p>
+      {costs.unpricedAssignedHH>0&&<p className="col-span-2 text-amber-200">{fmt(costs.unpricedAssignedHH)} HH com profissional vinculado, mas custo de remuneração ainda não informado.</p>}
       {costs.warnings.slice(0,5).map((w,i)=><p key={i} className="col-span-2 text-amber-200">{w}</p>)}
     </div>}
   </section>;
@@ -97,6 +98,7 @@ export const ScheduleCrewCostSummary:React.FC<{report:WorkCrewCostReport;hasEmpl
     </p>
     {!hasEmployees&&<p className="text-xs text-amber-200">Nenhum funcionário cadastrado. Abra Formação de Preço → Funcionários e equipe antes de atribuir responsáveis à obra.</p>}
     {!!report.unassignedHH&&<p className="text-xs text-amber-200">O custo está parcial: existem HH sem funcionários vinculados. Não use os valores acima como custo integral da equipe.</p>}
+    {report.unpricedAssignedHH>0&&<p className="text-xs text-amber-200">{fmt(report.unpricedAssignedHH)} HH estão atribuídas a funcionários sem remuneração válida. O custo previsto está incompleto até cadastrar esses valores.</p>}
     <p className="text-[11px] text-slate-400">
       A alocação mensal é apenas a parcela gerencial de um salário já contabilizado no custo fixo.
       Não some essa parcela novamente ao fluxo de caixa nem à margem sem excluir o rateio fixo.

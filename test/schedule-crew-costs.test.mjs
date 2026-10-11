@@ -85,3 +85,29 @@ test('deleted staff and over-capacity assignments never create imaginary salary'
  assert.equal(r.unassignedHH,15);
  assert.ok(r.issues.some(x=>x.includes('vaga')));
 });
+
+test('funcionário alocado sem valor hora não equivale a custo zero confirmado',()=>{
+ const t=setTaskCrewEmployee(baseTask('sem-valor',10,1),key,'hour',true,company);
+ const plan=build([t]);
+ const staff=company.map(e=>e.id==='hour'?{...e,paymentAmount:0}:e);
+ const r=estimateWorkCrewCosts(plan,estimateSchedule(plan),staff,22,8);
+ assert.equal(r.assignedHH,15);
+ assert.equal(r.unassignedHH,0);
+ assert.equal(r.unpricedAssignedHH,15);
+ assert.equal(r.variableHourly,0);
+ assert.ok(r.issues.some(issue=>issue.includes('valor por hora')));
+});
+test('salário mensal ausente fica parcial mesmo com jornada válida e outra pessoa precificada',()=>{
+ let t=baseTask('mensal-sem-valor');
+ t=setTaskCrewEmployee(t,key,'hour',true,company);
+ t=setTaskCrewEmployee(t,key,'month',true,company);
+ const plan=build([t]);
+ const staff=company.map(e=>e.id==='month'?{...e,paymentAmount:NaN}:e);
+ const r=estimateWorkCrewCosts(plan,estimateSchedule(plan),staff,22,8);
+ assert.equal(r.assignedHH,15);
+ assert.equal(r.unassignedHH,0);
+ assert.equal(r.unpricedAssignedHH,7.5);
+ assert.equal(r.variableHourly,315);
+ assert.equal(r.allocatedMonthly,0);
+ assert.ok(r.issues.some(issue=>issue.includes('salário mensal')));
+});
