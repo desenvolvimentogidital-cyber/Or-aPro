@@ -83,5 +83,5 @@ test('deleted staff and over-capacity assignments never create imaginary salary'
  const r=forecast([task]);
  assert.equal(r.variableHourly,0);
  assert.equal(r.unassignedHH,15);
- assert.ok(r.issues.some(x=>x.includes('vagas')));
+ assert.ok(r.issues.some(x=>x.includes('vaga')));
 });
