@@ -9,11 +9,12 @@
 - Não modificar o número de pessoas, a produtividade, o prazo, valores de orçamento, PDF público nem lançamentos financeiros automaticamente.
 - Validar alocações em backups e manter cronogramas antigos funcionando.
 - Testes unitários das regras e teste de navegador com persistência e mobile (ver status CI da PR antes de afirmar aprovação).
+- Painel financeiro por obra com receita recebida, despesa paga, saldo não equivalente a lucro, cobertura parcial dos custos de orçamento e tratamento de registros sem obra.
 
-## Próximas melhorias ANTES do merge conjunto
+## Melhorias implementadas e próximas melhorias ANTES do merge conjunto
 1. **Importação nacional de custos SINAPI** — elaborar processo em lotes com checkpoint/resume, código/unidade/referência/UF/regime, contagem de cobertura real e rejeição de conflitos. Conferir direitos de uso, planilha fonte e limites do Supabase antes de gravar. Nunca completar valores ausentes com médias ou preços de outra UF.
 2. **Decomposição correta de cada serviço** — extrair e classificar insumos e composições auxiliares do arquivo Analítico com Custo. Demonstrar subtotal de profissionais, materiais e equipamentos apenas quando o desdobramento e preços estiverem completos e reconciliados com CSD/CCD. Se não estiverem, manter "demais custos" sem rotulá-los exclusivamente como materiais.
-3. **Previsto x realizado** — permitir associar lançamentos reais de financeiro à obra e comparar com os custos aprovados, preservando a diferença entre custo fixo mensal, custo variável de execução e valores faturados. Não imputar pagamento por mera alocação.
+3. **Previsto x realizado — implementado nesta branch:** lançar recebimentos/despesas reais associados explicitamente à obra, comparar com a proposta e com custos diretos conhecidos; itens sem custo informado e valores sem obra ficam identificados. Não é lucro líquido. **Próximo:** aprofundar custos indiretos, consumo e medições de fornecedores sem criar movimentação fictícia.
 4. **Atualização mensal da referência** — ferramenta de importação/validação da nova competência, histórico com origem e data, sem reprecificar cotações e orçamentos já gravados.
 5. **Homologação mobile e PDF** — testar Android Chrome/Samsung, seleção de execução apenas, funcionário mensal ou por hora, HH, custo, cronograma Gantt, PDF e dados persistidos com conta de testes no domínio de produção depois da publicação.
 6. **Operação Vercel** — desbloquear quota 402, verificar CI final e liberar `main` UMA vez, validar commit/aliases e fazer smoke no domínio oficial.
