@@ -63,7 +63,7 @@ export const CompanyEmployeesSection:React.FC=()=>{
     return()=>ac.abort();
   },[session?.user.id,session?.access_token,code,uf,regime,competence]);
   const selectedRole=roles.find(r=>r.code===code)?.role||'';
-  const activeRate=reference?.code===code && activeRate.source.uf===uf && activeRate.source.regime===regime && activeRate.source.reference===competence?reference:null;
+  const activeRate=reference?.code===code && reference.source.uf===uf && reference.source.regime===regime && reference.source.reference===competence?reference:null;
   const monthlyReference=activeRate?sinapiMonthlyReference(activeRate.hourlyCost,schedule):null;
   function clear(){
     setEditId('');setName('');setCode('');setCustomRole('');
