@@ -58,6 +58,36 @@ await page.route('**/rest/v1/rpc/orcapro_browse_sinapi',route=>{
  return route.fulfill({status:200,headers,body:JSON.stringify(pageData)});
 });
 const consultedCosts=[];
+let omitAnalyticMaterial=false;
+await page.route('**/rest/v1/orcapro_sinapi_published_analytical?*',route=>{
+ const url=new URL(route.request().url());
+ const codes=url.searchParams.get('code')||'';
+ const root={code:'104596',unit:'M2',items:[
+   {type:'composition',code:'88316',unit:'H',coefficient:'1',status:'COM CUSTO'},
+   {type:'input',code:'50002',unit:'UN',coefficient:'1',status:'COM PREÇO'},
+   {type:'input',code:'50003',unit:'UN',coefficient:'1',status:'COM PREÇO'},
+   {type:'input',code:'50004',unit:'UN',coefficient:'1',status:'COM PREÇO'}
+ ]};
+ const labor={code:'88316',unit:'H',items:[
+   {type:'input',code:'50001',unit:'H',coefficient:'1',status:'COM PREÇO'}
+ ]};
+ const result=codes.includes('104596')?[root]:codes.includes('88316')?[labor]:[];
+ return route.fulfill({status:200,headers,body:JSON.stringify(result)});
+});
+await page.route('**/rest/v1/orcapro_sinapi_published_inputs?*',route=>{
+ const rows=[
+  {code:'50001',unit:'H',classification:'MAO DE OBRA',
+   costs_in_cents:{com_desoneracao:{PR:4000}}},
+  {code:'50002',unit:'UN',classification:'MATERIAL',
+   costs_in_cents:{com_desoneracao:{PR:9200}}},
+  {code:'50003',unit:'UN',classification:'EQUIPAMENTO (LOCAÇÃO)',
+   costs_in_cents:{com_desoneracao:{PR:300}}},
+  {code:'50004',unit:'UN',classification:'ENCARGOS COMPLEMENTARES',
+   costs_in_cents:{com_desoneracao:{PR:1329}}}
+ ];
+ return route.fulfill({status:200,headers,body:JSON.stringify(
+  omitAnalyticMaterial?rows.filter(r=>r.code!=='50002'):rows)});
+});
 await page.route('**/rest/v1/orcapro_sinapi_unit_costs?*',route=>{
  const u=new URL(route.request().url());
  const code=(u.searchParams.get('code')||'').replace(/^eq\./,'');
@@ -77,7 +107,7 @@ await page.route('**/rest/v1/orcapro_sinapi_published_unit_costs?*',route=>{
     {code:'88316',unit:'H',costs_in_cents:{sem_desoneracao:{PR:3278},com_desoneracao:{PR:3112}}},
     {code:'88256',unit:'H',costs_in_cents:{sem_desoneracao:{PR:4192},com_desoneracao:{PR:3960}}}
   ]:code==='104596'?[{
-    unit:'M2',source_file:'SINAPI_Referência_2026_09.xlsx (CSD/CCD)',
+    code:'104596',unit:'M2',source_file:'SINAPI_Referência_2026_09.xlsx (CSD/CCD)',
     costs_in_cents:{
       sem_desoneracao:{PR:15151,SP:14713},
       com_desoneracao:{PR:14829,SP:14422}
@@ -144,6 +174,22 @@ await price.fill('180');await price.press('Tab');
  await page.getByLabel('UF para o serviço SINAPI').selectOption('PR');
  await page.getByLabel('Encargos para o serviço SINAPI').selectOption('com_desoneracao');
  await page.getByText(/Custo importado: R\$\s*148,29/).waitFor({timeout:12000});
+ // Detalhamento oficial sob demanda: composição auxiliar, 4 grupos e custo
+ // reconciliado, sem modificar o preço que o usuário editou.
+ const analyticalAction=page.getByRole('button',{name:'Consultar detalhamento oficial dos insumos SINAPI'});
+ await analyticalAction.click();
+ const detail=page.getByRole('region',{name:'Detalhamento dos custos SINAPI 104596'});
+ await detail.getByText('R$ 92,00').waitFor();
+ await detail.getByText(/todos os insumos têm preço e os valores conciliam/).waitFor();
+ assert.match(await detail.innerText(),/Mão de obra/);
+ assert.match(await detail.innerText(),/Equipamentos/);
+ assert.match(await detail.innerText(),/Encargos, serviços e outros/);
+ omitAnalyticMaterial=true;
+ await detail.getByRole('button',{name:'Consultar detalhamento oficial dos insumos SINAPI'}).click();
+ await detail.getByText(/Detalhamento parcial: ainda faltam preços/).waitFor();
+ assert.ok(!(await detail.innerText()).includes('valores conciliam'));
+ omitAnalyticMaterial=false;
+
  assert.equal(await page.getByPlaceholder('0.00').inputValue(),'148.29');
  assert.equal(await page.getByPlaceholder('Deixe vazio se desconhecido').inputValue(),'148.29');
  const localAdjust=page.getByLabel('Ajuste comercial local do serviço SINAPI');
