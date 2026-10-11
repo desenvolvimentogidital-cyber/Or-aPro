@@ -243,7 +243,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       if(!selectedSinapi||!sinapiServiceUF||!sinapiServiceRegime)
         throw Error('Selecione UF e encargos antes de importar o XLSX.');
       if(!session)throw Error('Entre na sua conta para salvar os preços da tabela.');
-      if(!/\\.xlsx$/i.test(file.name)||file.size>35_000_000)
+      if(!/\.xlsx$/i.test(file.name)||file.size>35_000_000)
         throw Error('Escolha o arquivo SINAPI Referência 09/2026 em XLSX de até 35 MB.');
       setSavingCostFile(true);
       const {rows}=await importSinapiOfficialCosts(file,{
@@ -282,11 +282,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     setSinapiCostError('');setSinapiCostRows([]);setSavedCostCount(0);
     setSinapiImportProgress('');
     try {
-      if(!/\\.(csv|xlsx)$/i.test(file.name)||file.size>35_000_000)
+      if(!/\.(csv|xlsx)$/i.test(file.name)||file.size>35_000_000)
         throw Error('Selecione CSV ou SINAPI Referência XLSX de até 35 MB.');
       if(!sinapiCostUF||!sinapiCostRegime)
         throw Error('Selecione UF e encargos antes de importar.');
-      if(/\\.csv$/i.test(file.name)&&sinapiCostRegime==='ambos')
+      if(/\.csv$/i.test(file.name)&&sinapiCostRegime==='ambos')
         throw Error('CSV identifica apenas um regime: selecione com ou sem desoneração.');
       if(!session)throw Error('Entre na sua conta antes de importar preços SINAPI.');
       setSavingCostFile(true);
@@ -302,7 +302,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         else{
           const bytes=new Uint8Array(await file.arrayBuffer());
           let text=new TextDecoder('utf-8').decode(bytes);
-          if(text.includes('\\uFFFD'))text=new TextDecoder('windows-1252').decode(bytes);
+          if(text.includes('\uFFFD'))text=new TextDecoder('windows-1252').decode(bytes);
           result=parseSinapiUnitCosts(text,origin);
         }
         ignored+=result.ignored;
