@@ -60,7 +60,14 @@ export const FinancialControlView: React.FC=()=>{
     <form onSubmit={save} className="space-y-3 rounded-2xl border border-white/10 bg-[#141822] p-4">
       <h2 className="flex items-center gap-2 text-sm font-bold"><Plus size={18} className="text-orange-400"/> Registrar movimentação efetiva</h2>
       <div className="grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Movimento<select className={`${ctrl} mt-1`} value={type} onChange={e=>setType(e.target.value as FinanceEntry['type'])}><option value="recebimento">Recebimento</option><option value="despesa">Despesa paga</option></select></label><label className="text-xs text-slate-400">Data do movimento<input className={`${ctrl} mt-1`} type="date" value={date} onChange={e=>setDate(e.target.value)} required/></label></div>
-      <div className="grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Valor (R$)<input className={`${ctrl} mt-1`} inputMode="decimal" placeholder="0,00" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><label className="text-xs text-slate-400">Categoria<input className={`${ctrl} mt-1`} value={category} onChange={e=>setCategory(e.target.value)} placeholder="Materiais, mão de obra..." required/></label></div>
+      <div className="grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Valor (R$)<input className={`${ctrl} mt-1`} inputMode="decimal" placeholder="0,00" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><label className="text-xs text-slate-400">Categoria
+        <input list="orcapro-finance-categories" className={`${ctrl} mt-1`} value={category}
+          onChange={e=>setCategory(e.target.value)} placeholder="Escolha ou digite..." required/>
+        <datalist id="orcapro-finance-categories">
+          {['Materiais','Mão de obra','Equipamentos','Transporte','Fornecedores','Pagamento de cliente','Despesas administrativas','Impostos','Outros'].map(name=>
+            <option key={name} value={name}/>)}
+        </datalist>
+      </label></div>
       <label className="block text-xs text-slate-400">Descrição<input className={`${ctrl} mt-1`} maxLength={180} value={description} onChange={e=>setDescription(e.target.value)} placeholder="O que foi pago ou recebido?" required/></label>
       <label className="block text-xs text-slate-400">Qual obra recebeu ou pagou?
         <select className={`${ctrl} mt-1`} aria-label="Vincular movimentação a uma obra"
@@ -103,8 +110,14 @@ export const FinancialControlView: React.FC=()=>{
       {comparison.projects.length===0&&<p className="text-xs text-amber-200">Cadastre uma obra no Cronograma SINAPI para comparar seus custos.</p>}
       {workSummary&&<>
         <div className="grid grid-cols-2 gap-2">
-          {card('Proposta vinculada',workSummary.plannedSale??0,
-            workSummary.plannedSale===null?'Sem orçamento associado':`Proposta ${workSummary.quoteNumber||''} · ${workSummary.quoteStatus||''} (não é recebido)`)}
+          {workSummary.plannedSale===null?
+            <div className="rounded-2xl border border-white/10 bg-[#141822] p-4">
+              <p className="text-[11px] text-slate-400">Proposta vinculada</p>
+              <strong className="mt-2 block text-sm text-amber-200">Sem valor de proposta</strong>
+              <p className="mt-1 text-[10px] text-slate-500">Vincule a obra a um orçamento para ver o valor previsto.</p>
+            </div>:
+            card('Proposta vinculada',workSummary.plannedSale,
+              `Proposta ${workSummary.quoteNumber||''} · ${workSummary.quoteStatus||''} (não é recebido)`)}
           {card('Custos diretos conhecidos',workSummary.directCostKnown,
             `${workSummary.directCostCoveredItems} item(ns) com custo informado; não é gasto realizado`)}
           {card('Recebido nesta obra',workSummary.actualReceived,
