@@ -21,6 +21,19 @@ for kind,items in rows.items():
 assert report['composition_rows']==10000
 assert report['input_rows']==4000
 PY
+# O CI começa com 11 preços reais exemplificativos. O XLSX sintético deve
+# CONFLITAR com eles e ser integralmente recusado (nenhuma sobregravação).
+if psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql > /tmp/orcapro-sinapi-conflict.log 2>&1; then
+  echo "::error::Importador aceitou preços divergentes já publicados"
+  exit 1
+fi
+if ! grep -q "Preço publicado divergente" /tmp/orcapro-sinapi-conflict.log; then
+  cat /tmp/orcapro-sinapi-conflict.log
+  echo "::error::Falha inesperada no teste de conflitos"
+  exit 1
+fi
+# Liberar somente os registros de exemplo do BANCO TEMPORÁRIO DO CI.
+psql -v ON_ERROR_STOP=1 -c 'TRUNCATE public.orcapro_sinapi_published_unit_costs;'
 psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
 # Segunda importação comprova idempotência e ausência de preços duplicados.
 psql -v ON_ERROR_STOP=1 -f /tmp/orcapro-sinapi-contract/import.sql
