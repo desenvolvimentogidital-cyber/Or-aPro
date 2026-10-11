@@ -58,7 +58,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const sinapiLookup=useSinapiCostLookup(selectedSinapi,sinapiServiceUF,
     sinapiServiceRegime,costRevision);
   const laborLookup=useSinapiLaborOnlyLookup(selectedSinapi,sinapiServiceUF,
-    sinapiServiceRegime,sinapiPricingScope==='labor_only',costRevision);
+    sinapiServiceRegime,Boolean(selectedSinapi),costRevision);
   useEffect(()=>{
     const record=sinapiLookup.cost;
     if(sinapiPricingScope!=='complete'||!selectedSinapi||itemToEdit||!record||
@@ -594,6 +594,14 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                   {inlinePriceProgress&&<p role="status" className="text-[11px] text-sky-200">{inlinePriceProgress}</p>}
                   {inlinePriceError&&<p role="alert" className="text-[11px] text-rose-200">{inlinePriceError}</p>}
                   </>}
+                  {sinapiPricingScope==='complete'&&sinapiLookup.cost&&laborLookup.value?.unitCost!==null&&laborLookup.status==='ready'&&
+                    <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 p-2 text-[11px] text-slate-200">
+                      <div className="flex justify-between gap-2"><span>Composição completa</span><strong>{formatCurrency(sinapiLookup.cost.unitCost)}</strong></div>
+                      <div className="flex justify-between gap-2"><span>Mão de obra estimada por HH</span><strong>{formatCurrency(laborLookup.value!.unitCost!)}</strong></div>
+                      {sinapiLookup.cost.unitCost>=laborLookup.value!.unitCost!&&<div className="flex justify-between gap-2"><span>Demais custos (materiais/equipamentos/outros)</span><strong>{formatCurrency(Math.round((sinapiLookup.cost.unitCost-laborLookup.value!.unitCost!)*100)/100)}</strong></div>}
+                      <p className="mt-1 text-slate-400">Estimativa de decomposição, não uma discriminação oficial exata dos materiais.</p>
+                    </div>}
+                  {sinapiPricingScope==='complete'&&sinapiLookup.status==='missing'&&laborLookup.status==='ready'&&<p className="text-[11px] text-sky-200">Não há custo completo, mas a mão de obra tem referência de {formatCurrency(laborLookup.value!.unitCost!)}. Se o cliente fornece material, escolha “Somente mão de obra”.</p>}
                   <p className="text-[10px] text-amber-200">O custo de referência não contém margem ou BDI comercial. Confira e altere os valores livremente.</p>
                 </div>}
               </div>}
