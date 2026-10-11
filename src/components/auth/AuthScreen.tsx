@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CalendarDays, Eye, EyeOff, FileText, HardHat, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { setRecoveredPassword } from '../../services/cloud';
+import {InstallAppButton} from '../common/InstallAppButton';
 
 type AuthMode = 'login' | 'register' | 'recover' | 'set-password';
 
