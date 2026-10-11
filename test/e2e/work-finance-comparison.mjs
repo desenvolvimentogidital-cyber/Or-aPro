@@ -91,7 +91,7 @@ try{
  await page.reload({waitUntil:'domcontentloaded'});
  const again=await open();
  await again.getByLabel('Selecionar obra para comparar custos').selectOption('s1');
- assert.match(await again.innerText(),/R\$ 350,00/);
+ assert.match(await again.innerText(),/R\$\s*350,00/);
  assert.equal(fixture.payload.financeEntries.length,3);
  assert.deepEqual(errors,[]);
  console.log('PASS mobile finance: per-work actual receipts, expenses and known costs; partial warnings; cloud persistence, no mistaken sharing of one quote');
