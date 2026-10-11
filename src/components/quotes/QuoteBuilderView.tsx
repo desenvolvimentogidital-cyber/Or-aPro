@@ -720,7 +720,7 @@ export const QuoteBuilderView: React.FC = () => {
       {/* MODAL 2: Adicionar Item (Referência visual #6 exactly: Todos, Materiais, Serviços, Mão de Obra) */}
       {isItemPickerOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#141822] border-t sm:border border-white/10 rounded-t-3xl sm:rounded-2xl w-full max-w-md p-4 sm:p-5 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[85vh] flex flex-col">
+          <div className="bg-[#141822] border-t sm:border border-white/10 rounded-t-3xl sm:rounded-2xl w-full max-w-md p-4 sm:p-5 shadow-2xl animate-in slide-in-from-bottom duration-200 max-h-[85vh] overflow-y-auto overscroll-contain flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-white/5">
               <div className="flex items-center gap-2">
@@ -808,7 +808,7 @@ export const QuoteBuilderView: React.FC = () => {
                 </button>
                 {sinapiBrowseOpen&&<SinapiReferencePicker onSelect={prepareSinapiForQuote}
                   title="Selecionar serviço SINAPI para o orçamento"/>}
-                {pickedSinapi&&<div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                {pickedSinapi&&<div className="shrink-0 space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
                   <strong className="block text-xs text-emerald-200">SINAPI {pickedSinapi.code} · {categoryLabel(pickedSinapi)}</strong>
                   <p className="text-xs text-slate-200">{pickedSinapi.description}</p>
                   <p className="text-[11px] text-emerald-200">Profissionais: {pickedSinapi.labor.map(l=>`${l.role}: ${l.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH/${pickedSinapi.unit}`).join(' · ')}</p>
@@ -867,7 +867,7 @@ export const QuoteBuilderView: React.FC = () => {
                 </div>}
               </div>}
             {/* Items list with orange "+" icon (Referência visual #6) */}
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            <div className="max-h-56 shrink-0 overflow-y-auto space-y-2 pr-1">
               {filteredCatalogItems.map(catalogItem => {
                 const countInQuote =
                   items.find(i => i.catalogItemId === catalogItem.id)?.quantity || 0;
