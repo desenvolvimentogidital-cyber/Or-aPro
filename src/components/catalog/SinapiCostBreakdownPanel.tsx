@@ -67,13 +67,15 @@ export const SinapiCostBreakdownPanel:React.FC<{
      </div>
      {data.status==='reconciled'?
        <p role="status" className="text-[11px] text-emerald-200">
-         Conferido: todos os insumos têm preço e a soma concilia com a referência
-         dentro da tolerância de R$ 0,02 por unidade.
+         Conferido: todos os insumos têm preço e os valores conciliam com a referência
+         com diferença máxima de R$ 0,02 por unidade.
        </p>:
        <p role="alert" className="flex items-start gap-2 text-[11px] text-amber-200">
          <AlertTriangle size={15} className="shrink-0"/>
          {data.status==='partial'
            ?'Detalhamento parcial: ainda faltam preços ou componentes oficiais. Valores mostrados não representam o custo total.'
+           :data.status==='rounding'
+           ?`Diferença pequena, compatível com arredondamentos entre etapas (limite calculado de ${formatCurrency(data.roundingTolerance)} por unidade). Não é conciliação exata; confira o total oficial antes de aprovar.`
            :'Componentes não conciliados com o custo integral: confira a diferença antes de usar esta divisão.'}
        </p>}
      {data.issues.slice(0,4).map((msg,i)=><p key={i} className="text-[10px] text-amber-200">{msg}</p>)}
