@@ -18,6 +18,7 @@ export interface CatalogItem {
   costConfirmed?: boolean; // Diferencia custo zero declarado do campo não informado
   sinapiComposition?: import('./schedule').SinapiComposition; // Analítico com HH explicitamente associado pelo operador
   sinapiPricingScope?: 'complete' | 'labor_only'; // Serviço completo ou apenas execução (materiais do cliente)
+  sinapiLocalAdjustmentPercent?:number; // Ajuste comercial da cidade; NÃO custo SINAPI oficial
 }
 
 export interface QuoteItem {
@@ -35,6 +36,7 @@ export interface QuoteItem {
   catalogItemId?: string; // ID de origem do catálogo (itens antigos não possuem)
   sinapiComposition?: import('./schedule').SinapiComposition; // Snapshot opcional da referência confirmada
   sinapiPricingScope?: 'complete' | 'labor_only'; // Snapshot do que foi incluído no fornecimento
+  sinapiLocalAdjustmentPercent?:number; // Snapshot da decisão comercial local
 }
 
 export interface Client {
