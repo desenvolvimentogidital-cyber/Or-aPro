@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect,useRef,useState } from 'react';
+import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
 import {SinapiReferencePicker} from '../catalog/SinapiReferencePicker';
 import type {SinapiComposition} from '../../types/schedule';
 import {sinapiUFs,withSinapiProvenance,type SinapiUF,type SinapiRegime} from '../../utils/sinapiRegional';
@@ -53,9 +54,25 @@ export const QuoteBuilderView: React.FC = () => {
   const [sinapiBrowseOpen,setSinapiBrowseOpen]=useState(false);
   const [pickedSinapi,setPickedSinapi]=useState<SinapiComposition|null>(null);
   const [sinapiPrice,setSinapiPrice]=useState(0);
+  const [sinapiCost,setSinapiCost]=useState(0);
+  const [sinapiCostConfirmed,setSinapiCostConfirmed]=useState(false);
+  const sinapiSaleEdited=useRef(false);
+  const sinapiCostEdited=useRef(false);
   const [sinapiUF,setSinapiUF]=useState<SinapiUF|''>(
     sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:'');
   const [sinapiRegime,setSinapiRegime]=useState<SinapiRegime|''>('');
+  const sinapiLookup=useSinapiCostLookup(pickedSinapi,sinapiUF,sinapiRegime);
+  useEffect(()=>{
+    const cost=sinapiLookup.cost;
+    if(!pickedSinapi||!cost||cost.code!==pickedSinapi.code||
+      cost.source.reference!==pickedSinapi.reference||
+      cost.source.uf!==sinapiUF||cost.source.regime!==sinapiRegime||
+      !sameServiceUnit(cost.unit,pickedSinapi.unit))return;
+    if(!sinapiCostEdited.current){
+      setSinapiCost(cost.unitCost);setSinapiCostConfirmed(true);
+    }
+    if(!sinapiSaleEdited.current)setSinapiPrice(cost.unitCost);
+  },[sinapiLookup.cost,pickedSinapi?.code,sinapiUF,sinapiRegime]);
   const [sinapiAddError,setSinapiAddError]=useState('');
 
   // Additional costs & adjustments
@@ -98,7 +115,7 @@ export const QuoteBuilderView: React.FC = () => {
   } catch (error) { calculationError = error instanceof Error ? error.message : 'Confira os valores informados.'; }
 
   // Add item from catalog picker
-  const handleAddItemFromCatalog = (catalogItem: CatalogItem) => {
+  const handleAddItemFromCatalog = (catalogItem: CatalogItem, updatePriceOnDuplicate=false) => {
     setItems(prev => {
       // Dois serviços de nomes iguais em catálogos distintos não são o mesmo escopo.
       // Não mesclar indevidamente elétrica e hidráulica no orçamento.
@@ -109,7 +126,8 @@ export const QuoteBuilderView: React.FC = () => {
             ? {
                 ...i,
                 quantity: i.quantity + 1,
-                totalPrice: (i.quantity + 1) * i.unitPrice
+                totalPrice: (i.quantity + 1) * (updatePriceOnDuplicate?catalogItem.price:i.unitPrice),
+                ...(updatePriceOnDuplicate?{unitPrice:catalogItem.price,unitCost:catalogItem.cost,costConfirmed:catalogItem.costConfirmed}:{})
               }
             : i
         );
@@ -137,15 +155,22 @@ export const QuoteBuilderView: React.FC = () => {
 
   const prepareSinapiForQuote=(c:SinapiComposition)=>{
     setPickedSinapi(c);setSinapiBrowseOpen(false);setSinapiAddError('');
+    sinapiSaleEdited.current=false;sinapiCostEdited.current=false;
     const previously=catalog.find(item=>item.type==='servico' &&
       item.sinapiComposition?.code===c.code && item.sinapiComposition?.reference===c.reference);
     setSinapiPrice(previously?.price||0);
+    setSinapiCost(previously?.cost||0);
+    setSinapiCostConfirmed(previously?.costConfirmed||false);
+    if(previously){sinapiSaleEdited.current=true;sinapiCostEdited.current=true;}
     setSinapiUF(previously?.sinapiComposition?.uf ||
       (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
     setSinapiRegime(previously?.sinapiComposition?.regime||'');
   };
   const addSinapiToQuote=()=>{
     if(!pickedSinapi)return;
+    if(sinapiLookup.status==='loading'&&!sinapiSaleEdited.current&&!sinapiCostEdited.current){
+      setSinapiAddError('Aguarde a consulta do custo oficial antes de adicionar.');return;
+    }
     if(!Number.isFinite(sinapiPrice)||sinapiPrice<=0){
       setSinapiAddError('Informe o preço comercial de venda do serviço. A composição SINAPI informa HH, não preço.');
       return;
@@ -166,17 +191,24 @@ export const QuoteBuilderView: React.FC = () => {
       const catalogItem:CatalogItem=known||{
         id:newId('cat'),type:'servico',name:`SINAPI ${composition.code} · ${composition.description}`,
         category:categoryLabel(composition),price:sinapiPrice,unit:composition.unit,
+        cost:sinapiCostConfirmed?sinapiCost:undefined,costConfirmed:sinapiCostConfirmed,
         description:`Composição analítica ${composition.reference}; HH oficiais do arquivo ${composition.sourceFile}. Preço comercial declarado pelo usuário.`,
         sinapiComposition:composition
       };
       if(!known)addCatalogItem(catalogItem);
-      handleAddItemFromCatalog(catalogItem);
+      handleAddItemFromCatalog({...catalogItem,price:sinapiPrice,
+        cost:sinapiCostConfirmed?sinapiCost:undefined,costConfirmed:sinapiCostConfirmed},true);
       setPickedSinapi(null);setSinapiAddError('');
     }catch(err){
       setSinapiAddError(err instanceof Error?err.message:'Não foi possível inserir o serviço SINAPI.');
     }
   };
 
+  const handleSetItemUnitPrice = (id:string, unitPrice:number)=>{
+    if(!Number.isFinite(unitPrice)||unitPrice<0)return;
+    setItems(prev=>prev.map(i=>i.id===id?
+      {...i,unitPrice,totalPrice:i.quantity*unitPrice}:i));
+  };
   const handleUpdateItemQty = (id: string, delta: number) => {
     setItems(prev =>
       prev
@@ -365,7 +397,14 @@ export const QuoteBuilderView: React.FC = () => {
                       <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5">
                         <span>{item.quantity} {item.unit}</span>
                         <span>•</span>
-                        <span>{formatCurrency(item.unitPrice)}</span>
+                        <label className="flex flex-wrap items-center gap-1">
+                          <span className="sr-only">Preço unitário do item {item.name}</span>
+                          <span>R$</span>
+                          <EditableNumericInput aria-label={`Preço unitário do item ${item.name}`}
+                            value={item.unitPrice} min={0} required emptyAsBlank
+                            onCommit={n=>handleSetItemUnitPrice(item.id,n)}
+                            className="w-20 min-h-8 rounded-md border border-white/15 bg-[#0b0e15] px-1 text-[11px] text-white"/>
+                        </label>
                       </div>
                       {labor.length>0 && <p className="mt-1 text-[10px] leading-relaxed text-sky-300" title={labor.map(l=>`${l.role}: ${l.hours.toFixed(3)} HH`).join(' | ')}>
                         {sinapi?categoryLabel(sinapi):'Serviço'} · SINAPI {sinapi?.code} · {labor.reduce((sum,l)=>sum+l.hours,0).toLocaleString('pt-BR',{maximumFractionDigits:2})} HH referenciais · dimensione a equipe no Cronograma
@@ -775,9 +814,32 @@ export const QuoteBuilderView: React.FC = () => {
                   <p className="text-[11px] text-emerald-200">Profissionais: {pickedSinapi.labor.map(l=>`${l.role}: ${l.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH/${pickedSinapi.unit}`).join(' · ')}</p>
                   <label className="block text-xs text-slate-200">Preço comercial de venda (R$ por {pickedSinapi.unit})
                     <EditableNumericInput value={sinapiPrice} min={0.01} emptyAsBlank required
-                      onCommit={setSinapiPrice} aria-label="Preço de venda do serviço SINAPI"
+                      onCommit={value=>{sinapiSaleEdited.current=true;setSinapiPrice(value);}} aria-label="Preço de venda do serviço SINAPI"
                       className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] px-3 text-white"/>
                   </label>
+                  <label className="block text-xs text-slate-200">Custo direto do serviço (R$ por {pickedSinapi.unit})
+                    <EditableNumericInput value={sinapiCost} min={0} emptyAsBlank
+                      onCommit={value=>{sinapiCostEdited.current=true;setSinapiCost(value);setSinapiCostConfirmed(true);}}
+                      aria-label="Custo unitário do serviço SINAPI"
+                      className="mt-1 min-h-11 w-full rounded-lg border border-white/15 bg-[#0b101a] px-3 text-white"/>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-slate-300">
+                    <input type="checkbox" checked={sinapiCostConfirmed}
+                      onChange={e=>{sinapiCostEdited.current=true;setSinapiCostConfirmed(e.target.checked);}}
+                      aria-label="Confirmar custo unitário SINAPI"/>
+                    Confirmar custo informado (desmarque se não souber)
+                  </label>
+                  {sinapiLookup.status==='loading'&&<p role="status" className="text-[11px] text-sky-200">Consultando custo regional SINAPI…</p>}
+                  {sinapiLookup.status==='found'&&<p className="text-[11px] text-emerald-200">
+                    Referência importada: {formatCurrency(sinapiLookup.cost!.unitCost)}/{pickedSinapi.unit},
+                    {sinapiLookup.cost!.source.uf} · {sinapiLookup.cost!.source.reference} ·
+                    {sinapiLookup.cost!.source.regime==='com_desoneracao'?'com':'sem'} desoneração.
+                    Preço comercial sugerido inicialmente igual ao custo, editável.
+                  </p>}
+                  {sinapiLookup.status==='missing'&&<p className="text-[11px] text-amber-200">
+                    Ainda sem custo oficial importado para esta UF, competência e encargos. Cadastre custos em Serviços → Custos SINAPI, ou informe preço e custo manualmente.
+                  </p>}
+                  {sinapiLookup.status==='error'&&<p role="alert" className="text-[11px] text-rose-200">{sinapiLookup.error}</p>}
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-[11px] text-slate-200">UF da obra
                       <select aria-label="UF da composição SINAPI no orçamento" value={sinapiUF}
@@ -796,7 +858,7 @@ export const QuoteBuilderView: React.FC = () => {
                       </select>
                     </label>
                   </div>
-                  <p className="text-[10px] text-amber-200">Os coeficientes HH vêm da composição oficial; a UF/regime identifica sua obra e não recalcula os preços. Nenhum preço de venda é inferido.</p>
+                  <p className="text-[10px] text-amber-200">Custo de referência não inclui preço comercial, lucro ou BDI automaticamente. Confira os valores e ajuste-os livremente.</p>
                   {sinapiAddError&&<p role="alert" className="text-xs text-rose-200">{sinapiAddError}</p>}
                   <button type="button" onClick={addSinapiToQuote}
                     className="min-h-11 w-full rounded-lg bg-sky-700 p-2 text-xs font-bold text-white">
