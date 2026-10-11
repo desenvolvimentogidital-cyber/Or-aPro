@@ -29,6 +29,7 @@
     "src/utils/dashboardMetrics.ts",
     "src/types/schedule.ts",
     "src/utils/scheduleMath.ts",
+    "src/utils/scheduleCrewCosts.ts",
     "src/utils/quoteSchedule.ts",
     "src/utils/catalogSinapi.ts",
     "src/utils/sinapiCategories.ts",
