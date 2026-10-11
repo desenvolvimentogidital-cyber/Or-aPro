@@ -2,6 +2,7 @@ import React, { useEffect,useRef,useState } from 'react';
 import {useAuth} from '../../context/AuthContext';
 import {saveOfficialSinapiCosts} from '../../services/sinapiUnitCosts';
 import {useSinapiCostLookup} from '../../utils/useSinapiCostLookup';
+import {useSinapiLaborOnlyLookup} from '../../utils/useSinapiLaborOnlyLookup';
 import {SinapiReferencePicker} from './SinapiReferencePicker';
 import type {SinapiComposition} from '../../types/schedule';
 import {categoryLabel} from '../../utils/sinapiCategories';
@@ -46,6 +47,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const salePriceEdited=useRef(false);
   const directCostEdited=useRef(false);
   const [sinapiNeedsSalePrice,setSinapiNeedsSalePrice]=useState(false);
+  const [sinapiPricingScope,setSinapiPricingScope]=useState<'complete'|'labor_only'>('complete');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<CatalogItem | null>(null);
   const [selectedSinapi,setSelectedSinapi]=useState<SinapiComposition|null>(null);
@@ -55,9 +57,11 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
   const [sinapiServiceRegime,setSinapiServiceRegime]=useState<SinapiRegime|''>('');
   const sinapiLookup=useSinapiCostLookup(selectedSinapi,sinapiServiceUF,
     sinapiServiceRegime,costRevision);
+  const laborLookup=useSinapiLaborOnlyLookup(selectedSinapi,sinapiServiceUF,
+    sinapiServiceRegime,sinapiPricingScope==='labor_only',costRevision);
   useEffect(()=>{
     const record=sinapiLookup.cost;
-    if(!selectedSinapi||itemToEdit||!record||
+    if(sinapiPricingScope!=='complete'||!selectedSinapi||itemToEdit||!record||
        record.code!==selectedSinapi.code||
        record.source.reference!==selectedSinapi.reference||
        record.source.uf!==sinapiServiceUF||
@@ -66,7 +70,18 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     if(!directCostEdited.current)setCost(String(record.unitCost));
     if(!salePriceEdited.current)setPrice(record.unitCost);
   },[sinapiLookup.cost,selectedSinapi?.code,itemToEdit?.id,
-     sinapiServiceUF,sinapiServiceRegime]);
+     sinapiServiceUF,sinapiServiceRegime,sinapiPricingScope]);
+  useEffect(()=>{
+    const estimate=laborLookup.value;
+    if(sinapiPricingScope!=='labor_only'||!selectedSinapi||itemToEdit||
+      !estimate||estimate.unitCost===null||
+      estimate.source.reference!==selectedSinapi.reference||
+      estimate.source.uf!==sinapiServiceUF||
+      estimate.source.regime!==sinapiServiceRegime)return;
+    if(!directCostEdited.current)setCost(String(estimate.unitCost));
+    if(!salePriceEdited.current)setPrice(estimate.unitCost);
+  },[laborLookup.value,selectedSinapi?.code,itemToEdit?.id,
+     sinapiServiceUF,sinapiServiceRegime,sinapiPricingScope]);
 
   // Form states
   const [name, setName] = useState('');
@@ -100,6 +115,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
 
   const openAddModal = (defaultType?: ItemType) => {
     setItemToEdit(null);setSinapiNeedsSalePrice(false);setSelectedSinapi(null);
+    setSinapiPricingScope('complete');
     setInlinePriceError('');setInlinePriceProgress('');
     salePriceEdited.current=false;directCostEdited.current=false;
     setShowSinapiPicker(defaultType==='servico'||activeTab==='servico');
@@ -117,6 +133,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
 
   const openEditModal = (item: CatalogItem) => {
     setSinapiNeedsSalePrice(false);setSelectedSinapi(item.sinapiComposition||null);
+    setSinapiPricingScope(item.sinapiPricingScope||'complete');
     setInlinePriceError('');setInlinePriceProgress('');
     salePriceEdited.current=true;directCostEdited.current=true;
     setSinapiServiceUF(item.sinapiComposition?.uf|| (sinapiUFs.includes(company.state as SinapiUF)?company.state as SinapiUF:''));
@@ -165,7 +182,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         laborType: type === 'mao_de_obra' ? laborType : undefined,
         description: description.trim(),
         imageUrl: imageUrl || undefined,
-        sinapiComposition:type==='servico'?analytical:undefined
+        sinapiComposition:type==='servico'?analytical:undefined,
+        sinapiPricingScope:type==='servico'&&analytical?sinapiPricingScope:undefined
       });
     } else {
       const newItem: CatalogItem = {
@@ -180,7 +198,8 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
         laborType: type === 'mao_de_obra' ? laborType : undefined,
         description: description.trim(),
         imageUrl: imageUrl || undefined,
-        sinapiComposition:type==='servico'?analytical:undefined
+        sinapiComposition:type==='servico'?analytical:undefined,
+        sinapiPricingScope:type==='servico'&&analytical?sinapiPricingScope:undefined
       };
       addCatalogItem(newItem);
     }
@@ -195,6 +214,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
     if(known)openEditModal(known);
     else {
       setItemToEdit(null);
+      setSinapiPricingScope('complete');
       salePriceEdited.current=false;directCostEdited.current=false;
       setName(`SINAPI ${composition.code} · ${composition.description}`);
       setType('servico');
@@ -251,6 +271,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
       salePriceEdited.current=false;directCostEdited.current=false;
     }
     setSelectedSinapi(null);setSinapiNeedsSalePrice(false);
+    setSinapiPricingScope('complete');
     setShowSinapiPicker(false);
     setInlinePriceError('');setInlinePriceProgress('');
   };
@@ -507,6 +528,49 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                       </select>
                     </label>
                   </div>
+                  <div className="space-y-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
+                    <p className="text-xs font-semibold text-slate-200">O que você vai fornecer?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" aria-pressed={sinapiPricingScope==='complete'}
+                        onClick={()=>{if(sinapiPricingScope==='complete')return;
+                          if(itemToEdit)setItemToEdit(null);
+                          setSinapiPricingScope('complete');
+                          salePriceEdited.current=false;directCostEdited.current=false;
+                          setPrice(0);setCost('');
+                          setName(`SINAPI ${selectedSinapi.code} · ${selectedSinapi.description}`);
+                        }}
+                        className={`min-h-11 rounded-lg border px-2 text-[11px] font-semibold ${sinapiPricingScope==='complete'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}>
+                        Serviço completo
+                      </button>
+                      <button type="button" aria-pressed={sinapiPricingScope==='labor_only'}
+                        onClick={()=>{if(sinapiPricingScope==='labor_only')return;
+                          if(itemToEdit)setItemToEdit(null);
+                          setSinapiPricingScope('labor_only');
+                          salePriceEdited.current=false;directCostEdited.current=false;
+                          setPrice(0);setCost('');
+                          setName(`SINAPI ${selectedSinapi.code} · Mão de obra · ${selectedSinapi.description}`);
+                        }}
+                        className={`min-h-11 rounded-lg border px-2 text-[11px] font-semibold ${sinapiPricingScope==='labor_only'?'border-orange-400 bg-orange-500/20 text-orange-100':'border-white/15 text-slate-300'}`}>
+                        Somente mão de obra
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-400">{sinapiPricingScope==='labor_only'?
+                      'Material fornecido pelo cliente. O serviço permanece vinculado ao SINAPI e às HH do cronograma.':'Incluir material e execução no preço da composição completa.'}</p>
+                  </div>
+                  {sinapiPricingScope==='labor_only'&&<>
+                    {laborLookup.status==='loading'&&<p role="status" className="text-[11px] text-sky-200">Consultando custos/h dos profissionais…</p>}
+                    {laborLookup.value&&<div className="space-y-1 text-[11px] text-slate-200">
+                      {laborLookup.value.workers.map(w=><div key={w.code+':'+w.role} className="flex justify-between gap-2">
+                        <span className="min-w-0">{w.role}: {w.hoursPerUnit.toLocaleString('pt-BR',{maximumFractionDigits:5})} HH</span>
+                        <span className="shrink-0">{w.subtotal===null?'Sem preço/h':formatCurrency(w.subtotal)}</span>
+                      </div>)}
+                    </div>}
+                    {laborLookup.status==='ready'&&<p role="status" className="text-[11px] text-emerald-200">Mão de obra estimada: {formatCurrency(laborLookup.value!.unitCost!)}/{selectedSinapi.unit}. Sem materiais do serviço; valor de venda editável.</p>}
+                    {laborLookup.status==='missing'&&<p className="text-[11px] text-amber-200">Alguns profissionais não têm preço/h publicado nesta UF. Importe custos CSD/CCD ou informe o valor da sua mão de obra manualmente. Não será somado material.</p>}
+                    {laborLookup.status==='error'&&<p role="alert" className="text-[11px] text-rose-200">{laborLookup.error}</p>}
+                    <p className="text-[10px] text-amber-200">Custo estimado por HH × custo/h dos profissionais com encargos; não é uma separação oficial completa de materiais e equipamentos.</p>
+                  </>}
+                  {sinapiPricingScope==='complete'&&<>
                   {sinapiLookup.status==='loading'&&<p className="text-[11px] text-sky-200">Consultando custo regional SINAPI…</p>}
                   {sinapiLookup.status==='found'&&<p role="status" className="text-[11px] text-emerald-200">
                     Custo importado: {formatCurrency(sinapiLookup.cost!.unitCost)}/{selectedSinapi.unit},
@@ -529,6 +593,7 @@ export const CatalogView: React.FC<CatalogViewProps> = ({ initialType }) => {
                     </label>}
                   {inlinePriceProgress&&<p role="status" className="text-[11px] text-sky-200">{inlinePriceProgress}</p>}
                   {inlinePriceError&&<p role="alert" className="text-[11px] text-rose-200">{inlinePriceError}</p>}
+                  </>}
                   <p className="text-[10px] text-amber-200">O custo de referência não contém margem ou BDI comercial. Confira e altere os valores livremente.</p>
                 </div>}
               </div>}
