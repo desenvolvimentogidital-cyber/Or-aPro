@@ -23,6 +23,7 @@ INPUT_CODE=re.compile(r'^\d{1,8}$')
 
 def extract_analytical(path):
     result={}
+    by_code={}
     competence=None
     count=0
     with ZipFile(path) as archive:
@@ -47,6 +48,9 @@ def extract_analytical(path):
                 key=(parent,unit)
                 if key in result:raise ValueError(f'Composição repetida na aba Analítico: {key}')
                 result[key]=[]
+                if parent in by_code:
+                    raise ValueError(f'Código de composição com unidades duplicadas: {parent}')
+                by_code[parent]=key
             else:
                 if item_type not in TYPE:
                     raise ValueError(f'Analítico!C{index}: tipo não suportado {item_type!r}')
@@ -66,10 +70,10 @@ def extract_analytical(path):
                     raise ValueError(f'Analítico!H{index}: situação inválida {status!r}')
                 # A identidade pai é (código, unidade). O cabeçalho deve vir ANTES dos filhos;
                 # uma composição com o mesmo código e múltiplas unidades não pode ser adivinhada.
-                parents=[k for k in result if k[0]==parent]
-                if len(parents)!=1:
-                    raise ValueError(f'Analítico linha {index}: composição principal ambígua ou ausente {parent}.')
-                result[parents[0]].append({'type':TYPE[item_type],
+                parent_key=by_code.get(parent)
+                if parent_key is None:
+                    raise ValueError(f'Analítico linha {index}: composição principal ausente {parent}.')
+                result[parent_key].append({'type':TYPE[item_type],
                     'code':child_code,'unit':child_unit,
                     'coefficient':str(coefficient),'status':status})
                 count+=1
