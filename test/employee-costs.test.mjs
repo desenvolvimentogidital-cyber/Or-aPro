@@ -14,8 +14,8 @@ test('funcionário mensalista compõe folha FIXA sem criar despesa paga',()=>{
 });
 test('horista com horas informadas compõe previsão VARIÁVEL, não despesa fixa',()=>{
  const costs=employeeMonthlyCosts([employee('1','monthly',3500,0,600),employee('2','hourly',42,80,50)]);
- assert.equal(costs.fixed,4100);
- assert.equal(costs.variableEstimate,3410);
+ assert.equal(costs.fixed,4150);
+ assert.equal(costs.variableEstimate,3360);
  assert.equal(costs.forecast,7510);
  assert.equal(costs.unplannedHourly,0);
 });
