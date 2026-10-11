@@ -1,0 +1,66 @@
+-- Preço/hora da composição de cada profissional (H), não valor/hora de insumo aleatório.
+-- Fonte: SINAPI Referência 09/2026, CSD e CCD, coluna AM (PR, Curitiba).
+-- Aplicado como (HH por unidade x custo/h), SEM incluir insumos materiais da composição principal.
+-- Não substituir custos particulares ou de demais UFs; ausência é explicitada ao usuário.
+insert into public.orcapro_sinapi_published_unit_costs
+  (reference,code,unit,costs_in_cents,source_file)
+select '09/2026', v.code, 'H',
+  jsonb_build_object('sem_desoneracao',jsonb_build_object('PR',v.csd),
+                     'com_desoneracao',jsonb_build_object('PR',v.ccd)),
+  'SINAPI_Referência_2026_09.xlsx (CSD/CCD, profissional H)'
+from (values
+('88238',3451,3274),
+('88239',3417,3240),
+('88240',3332,3155),
+('88242',3458,3281),
+('88243',3398,3224),
+('88245',4182,3950),
+('88246',2569,2448),
+('88247',3513,3331),
+('88248',3418,3240),
+('88251',3451,3274),
+('88252',3257,3093),
+('88253',2326,2222),
+('88256',4192,3960),
+('88260',3712,3515),
+('88261',3966,3748),
+('88262',4141,3909),
+('88264',4263,4025),
+('88267',4154,3921),
+('88269',4035,3815),
+('88270',4212,3978),
+('88274',4617,4354),
+('88278',3695,3492),
+('88279',4450,4198),
+('88281',4208,3966),
+('88282',4086,3853),
+('88283',4851,4562),
+('88284',3735,3528),
+('88286',4506,4243),
+('88293',3974,3750),
+('88294',4150,3912),
+('88295',3942,3719),
+('88296',5107,4798),
+('88297',4010,3783),
+('88298',3658,3457),
+('88300',4847,4557),
+('88301',3974,3750),
+('88302',3974,3750),
+('88303',3462,3275),
+('88304',4847,4557),
+('88306',3713,3508),
+('88307',4072,3840),
+('88309',4212,3978),
+('88310',4357,4125),
+('88312',4357,4125),
+('88315',4182,3950),
+('88316',3278,3112),
+('88317',4314,4082),
+('88323',4104,3875),
+('88325',4238,4002),
+('88377',3789,3578),
+('88441',3409,3236),
+('90781',4038,3807)
+) as v(code,csd,ccd)
+where v.csd>0 and v.ccd>0
+on conflict(reference,code,unit) do nothing;
