@@ -41,6 +41,8 @@ jobs:
         run: node test/e2e/sinapi-browse-all-services.mjs
       - name: Formacao de preco — dias e horas editaveis e salvos no Android
         run: node test/e2e/pricing-workload.mjs
+      - name: Funcionários e custos empresariais mensal/horista (Android isolado)
+        run: node test/e2e/company-employees.mjs
       - name: Edicao numerica Android em catalogo, custos e cronograma
         run: node test/e2e/numeric-editing.mjs
       - name: Compilar regras para integração
