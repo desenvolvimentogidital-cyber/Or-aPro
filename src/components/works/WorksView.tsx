@@ -4,6 +4,7 @@ import {useApp} from '../../context/AppContext';
 import {estimateSchedule} from '../../utils/scheduleMath';
 import {physicalProgress} from '../../utils/execution';
 import {addDiaryRecord,validStatus} from '../../utils/workDiary';
+import {compareWorkFinance} from '../../utils/workFinanceComparison';
 import {newId} from '../../utils/quoteMath';
 import type {WorkDiaryEntry,OperationalStatus} from '../../types/schedule';
 
@@ -28,6 +29,7 @@ export const WorksView:React.FC=()=>{
  const [responsible,setResponsible]=useState('');
  const [workers,setWorkers]=useState('');
  const [error,setError]=useState('');
+ const workFinance=compareWorkFinance(schedules,quotes,financeEntries);
  const onSave=(planId:string)=>{
   const plan=schedules.find(s=>s.id===planId);if(!plan)return;
   const count=workers.trim()?Number(workers):undefined;
@@ -41,9 +43,10 @@ export const WorksView:React.FC=()=>{
   {schedules.length===0?<div className="rounded-2xl border border-white/10 bg-[#141822] p-6 text-center"><p className="text-sm text-slate-300">Nenhuma obra com cronograma cadastrada.</p><button onClick={()=>{setSelectedScheduleId('');setActiveView('cronograma');}} className="mt-4 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold">Abrir cronograma</button></div>:schedules.map(plan=>{
    const quote=quotes.find(q=>q.id===plan.quoteId);
    const report=estimateSchedule(plan);const executed=physicalProgress(plan);
-   const movements=financeEntries.filter(e=>e.quoteId&&e.quoteId===plan.quoteId);
-   const received=movements.filter(e=>e.type==='recebimento').reduce((sum,e)=>sum+e.amount,0);
-   const spent=movements.filter(e=>e.type==='despesa').reduce((sum,e)=>sum+e.amount,0);
+   // Cash is attached to a specific work by scheduleId, never by shared quoteId.
+   const cash=workFinance.projects.find(row=>row.scheduleId===plan.id);
+   const received=cash?.actualReceived??0;
+   const spent=cash?.actualSpent??0;
    const expanded=expandedId===plan.id;
    const diary=[...(plan.diary||[])].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));
    return <section key={plan.id} className="space-y-3 rounded-2xl border border-white/10 bg-[#141822] p-4">
@@ -54,6 +57,7 @@ export const WorksView:React.FC=()=>{
     <div className="flex justify-between text-xs"><span className="text-slate-400">Avanço físico médio por etapa</span><strong>{executed.percent===null?'Sem etapas':`${executed.percent.toFixed(1)}%`}</strong></div>
     <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-orange-500" style={{width:`${executed.percent||0}%`}}/></div>
     <div className="grid grid-cols-2 gap-2 text-[11px]"><div className="rounded-xl bg-white/5 p-2.5"><p className="text-slate-400">Medições</p><strong>{executed.completed} de {plan.tasks.length} etapas concluídas</strong></div><div className="rounded-xl bg-white/5 p-2.5"><p className="text-slate-400">Término previsto</p><strong>{report.finishDate?report.finishDate.split('-').reverse().join('/'): 'A calcular'}</strong></div><div className="rounded-xl bg-white/5 p-2.5"><p className="text-slate-400">Recebimentos vinculados</p><strong>{money(received)}</strong></div><div className="rounded-xl bg-white/5 p-2.5"><p className="text-slate-400">Despesas vinculadas</p><strong>{money(spent)}</strong></div></div>
+    {!!cash?.unassignedQuoteMovements&&<p role="status" className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-2 text-[11px] text-amber-200">{cash.unassignedQuoteMovements} lançamento(s) do orçamento sem obra definida não entram nos totais desta obra. Vincule-os em Financeiro.</p>}
     <div className="flex flex-wrap gap-2"><button onClick={()=>{setSelectedScheduleId(plan.id);setActiveView('cronograma');}} className="inline-flex items-center gap-1 rounded-lg border border-orange-500/30 px-3 py-2 text-xs text-orange-300"><CalendarDays size={14}/> Cronograma <ArrowRight size={13}/></button><button onClick={()=>setActiveView('financeiro')} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200"><Wallet size={14}/> Financeiro</button><button onClick={()=>{setExpandedId(expanded?'':plan.id);setError('');setResponsible(plan.responsible||'');}} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200"><BookOpen size={14}/> Diário · {diary.length} registro(s)</button></div>
     {expanded&&<div className="space-y-3 border-t border-white/10 pt-3"><div className="flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">Diário e ocorrências reais</h3><button type="button" className="flex items-center gap-1 text-xs text-orange-300 disabled:opacity-40" disabled={!diary.length} onClick={()=>exportDiary(plan.title,diary)}><Download size={14}/> Exportar CSV</button></div><p className="text-[11px] text-slate-400">Registre somente acontecimentos observados na obra. O diário não cria medições nem despesas automaticamente. Sem fotos ou assinaturas simuladas.</p>
       <div className="grid gap-2 sm:grid-cols-2"><label className="text-[11px] text-slate-400">Data da atividade<input type="date" className={`${ctrl} mt-1`} value={date} onChange={e=>setDate(e.target.value)}/></label><label className="text-[11px] text-slate-400">Tipo de registro<select className={`${ctrl} mt-1`} value={kind} onChange={e=>setKind(e.target.value as WorkDiaryEntry['kind'])}>{Object.entries(types).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><label className="text-[11px] text-slate-400">Responsável pelo registro<input className={`${ctrl} mt-1`} value={responsible} onChange={e=>setResponsible(e.target.value)} placeholder="Nome de quem registrou"/></label><label className="text-[11px] text-slate-400">Trabalhadores no local (opcional)<input type="text" inputMode="numeric" className={`${ctrl} mt-1`} value={workers} onChange={e=>setWorkers(e.target.value)} placeholder="Deixar vazio se desconhecido"/></label></div>

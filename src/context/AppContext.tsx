@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
-import { loadWorkspace, saveWorkspace, type WorkspaceData } from '../services/cloud';
+import { loadWorkspace, saveWorkspace, WorkspaceConflictError, type WorkspaceData } from '../services/cloud';
 import { newId, nextQuoteNumber, dateKey } from '../utils/quoteMath';
 import { containsOldExampleRecords } from '../utils/legacyFixtures';
 import {validateWorkspaceBackup} from '../utils/backupValidation';
@@ -10,7 +10,7 @@ import type { WorkSchedule, SinapiComposition } from '../types/schedule';
 import type { SinapiUF, SinapiRegime } from '../utils/sinapiRegional';
 import type { FinanceEntry } from '../types/finance';
 import { validateEntry } from '../utils/financeMetrics';
-import { workspaceSignature, needsWorkspaceSave } from '../utils/workspaceSync';
+import { workspaceSignature, needsWorkspaceSave, reconcileWorkspaces } from '../utils/workspaceSync';
 import {modeForViewport, LAYOUT_BREAKPOINT} from '../utils/viewMode';
 
 export type AppView = 
@@ -50,6 +50,9 @@ interface AppContextType {
   ready: boolean;
   syncStatus: 'saved' | 'saving' | 'error';
   syncError: string;
+  syncConflict: boolean;
+  syncResolving: boolean;
+  downloadLocalAndLoadCloud: () => Promise<void>;
   getNextQuoteNumber: () => string;
   exportBackup: () => void;
   importBackup: (data: unknown) => void;
@@ -122,6 +125,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [ready, setReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const [syncError, setSyncError] = useState('');
+  const [syncConflict, setSyncConflict] = useState(false);
+  const [syncResolving, setSyncResolving] = useState(false);
+  const baseSnapshotRef = useRef<WorkspaceData | null>(null);
+  const workingRef = useRef<WorkspaceData | null>(null);
   const revisionRef = useRef(0);
   const saveBusyRef = useRef(false);
   const latestRef = useRef<WorkspaceData | null>(null);
@@ -175,6 +182,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const snapshot = (): WorkspaceData => ({
     quotes, clients, catalog, expenses, company, notifications, schedules, financeEntries, lastQuoteNumber: numberRef.current
   });
+  // Latest rendered local edits; check this when reconciling an asynchronous remote read.
+  workingRef.current = snapshot();
 
   const applySnapshot = (data: WorkspaceData) => {
     data = validateWorkspaceBackup(data);
@@ -182,19 +191,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setExpenses(data.expenses); setCompany(data.company); setNotifications(data.notifications);
     numberRef.current = Math.max(data.lastQuoteNumber || 0, ...data.quotes.map(q => Number(/^#(\d+)$/.exec(q.number)?.[1] || 0)));
     // Carregar um workspace não é uma edição: não aumentar a revisão ao abrir a conta.
-    lastSavedSignatureRef.current = workspaceSignature({
+    const normalized = {
       quotes: data.quotes, clients: data.clients, catalog: data.catalog, expenses: data.expenses,
       company: data.company, notifications: data.notifications, schedules: data.schedules ?? [],
       financeEntries: data.financeEntries ?? [], lastQuoteNumber: numberRef.current
-    });
+    };
+    lastSavedSignatureRef.current = workspaceSignature(normalized);
+    baseSnapshotRef.current = normalized;
   };
 
   // Restauracoes sao edicoes: manter a assinatura REMOTA anterior ate salvar.
   // Caso contrario, o backup apareceria na tela mas seria perdido ao recarregar.
   const applyRestoredSnapshot = (data: WorkspaceData) => {
     const previousServerSignature = lastSavedSignatureRef.current;
+    const previousBase = baseSnapshotRef.current;
     applySnapshot(data);
     lastSavedSignatureRef.current = previousServerSignature;
+    baseSnapshotRef.current = previousBase;
   };
 
   // A new authenticated account starts with NO commercial data.
@@ -202,12 +215,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!session) return;
     let cancelled = false;
     setReady(false);
+    setSyncConflict(false);
     loadWorkspace(session).then(({ data, revision }) => {
       if (cancelled) return;
       revisionRef.current = revision;
       if (data) applySnapshot(data);
       else applySnapshot({ quotes: [], clients: [], catalog: [], expenses: [], company: emptyCompany, notifications: [], financeEntries: [], lastQuoteNumber: 0 });
-      setSyncError(''); setSyncStatus('saved'); setReady(true);
+      setSyncError(''); setSyncStatus('saved'); setSyncConflict(false); setReady(true);
     }).catch(err => {
       if (!cancelled) { setSyncStatus('error'); setSyncError(`Não foi possível carregar seus dados: ${err.message}`); }
     });
@@ -231,12 +245,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           latestRef.current = null;
           revisionRef.current = await saveWorkspace(session, next, revisionRef.current);
           lastSavedSignatureRef.current = workspaceSignature(next);
+          baseSnapshotRef.current = next;
         }
         setSyncStatus('saved');
       } catch (err) {
         // Keep the unsent data in memory; never pretend it was saved.
         setSyncStatus('error');
-        setSyncError(err instanceof Error ? err.message : 'Erro desconhecido de sincronização.');
+        setSyncConflict(err instanceof WorkspaceConflictError);
+        setSyncError(err instanceof WorkspaceConflictError
+          ? 'Outra aba ou dispositivo salvou alterações. Use "Conciliar mudanças" para preservar os dois lados.'
+          : err instanceof Error ? err.message : 'Erro desconhecido de sincronização.');
       } finally { saveBusyRef.current = false; }
     }, 600);
     return () => window.clearTimeout(timer);
@@ -310,23 +328,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } as WorkspaceData);
   };
   const retrySync = async () => {
-    if (!ready || saveBusyRef.current) return;
-    if (!session) return;
+    if (!ready || saveBusyRef.current || syncResolving || !session) return;
     saveBusyRef.current = true;
+    setSyncResolving(true);
     setSyncStatus('saving');
+    const before = workingRef.current ?? snapshot();
+    const beforeSignature = workspaceSignature(before);
     try {
-      // Concluir todas as alterações pendentes, inclusive edições durante esta tentativa.
-      latestRef.current = snapshot();
-      while (latestRef.current) {
-        const next = latestRef.current;
+      if (syncConflict) {
+        // Reload from server, never retry a stale revision. Three-way merge is
+        // allowed only when individual records do not conflict.
+        const remote = await loadWorkspace(session);
+        if (!remote.data) throw Error('Não foi possível recuperar a versão remota. Sua cópia local foi preservada.');
+        if (workspaceSignature(workingRef.current ?? before) !== beforeSignature)
+          throw Error('Há novas edições locais. Revise os dados e tente conciliar novamente.');
+        const combined = reconcileWorkspaces(baseSnapshotRef.current ?? before,before,remote.data);
+        if (!combined.merged) {
+          throw Error('As duas sessões alteraram os mesmos dados: '+
+            combined.conflicts.slice(0,3).join(', ')+
+            '. Baixe uma cópia antes de decidir qual versão utilizar.');
+        }
+        // Compare-and-swap using the freshly read revision; if a third device
+        // writes in the meantime, the backend rejects this save again.
+        const nextRevision = await saveWorkspace(session,combined.merged,remote.revision);
+        revisionRef.current = nextRevision;
+        baseSnapshotRef.current = combined.merged;
+        lastSavedSignatureRef.current = workspaceSignature(combined.merged);
         latestRef.current = null;
-        revisionRef.current = await saveWorkspace(session, next, revisionRef.current);
-        lastSavedSignatureRef.current = workspaceSignature(next);
+        if (workspaceSignature(workingRef.current ?? before) !== beforeSignature) {
+          // Do not replace subsequent edits made during the remote request.
+          throw Error('Novas edições foram feitas durante a conciliação. Faça backup antes de continuar.');
+        }
+        applySnapshot(combined.merged);
+      } else {
+        // Ordinary network errors can be retried with the original revision.
+        latestRef.current = workingRef.current ?? snapshot();
+        while (latestRef.current) {
+          const next = latestRef.current;
+          latestRef.current = null;
+          revisionRef.current = await saveWorkspace(session,next,revisionRef.current);
+          lastSavedSignatureRef.current = workspaceSignature(next);
+          baseSnapshotRef.current = next;
+        }
       }
-      setSyncStatus('saved'); setSyncError('');
+      setSyncConflict(false);
+      setSyncStatus('saved');setSyncError('');
     } catch (err) {
-      setSyncStatus('error'); setSyncError(err instanceof Error ? err.message : 'Falha de sincronização.');
-    } finally { saveBusyRef.current = false; }
+      setSyncStatus('error');
+      if (err instanceof WorkspaceConflictError || syncConflict) setSyncConflict(true);
+      setSyncError(err instanceof Error ? err.message : 'Falha de sincronização.');
+    } finally {
+      saveBusyRef.current = false;setSyncResolving(false);
+    }
+  };
+
+  const downloadLocalAndLoadCloud = async () => {
+    if (!syncConflict || !ready || !session || saveBusyRef.current || syncResolving) return;
+    if (!window.confirm('Uma cópia JSON das alterações deste aparelho será baixada. Após confirmar, a versão da nuvem substituirá os dados desta tela. Continuar?')) return;
+    // Save the unsynchronized local state first. Never silently discard edits.
+    exportBackup();
+    const beforeSignature = workspaceSignature(workingRef.current ?? snapshot());
+    saveBusyRef.current = true;
+    setSyncResolving(true);
+    try {
+      const remote = await loadWorkspace(session);
+      if (!remote.data) throw Error('A versão da nuvem não está disponível. Dados locais mantidos.');
+      if (workspaceSignature(workingRef.current ?? snapshot()) !== beforeSignature)
+        throw Error('Novas alterações neste aparelho: não substituí nada. Tente novamente.');
+      latestRef.current = null;
+      revisionRef.current = remote.revision;
+      applySnapshot(remote.data);
+      setSyncConflict(false);setSyncError('');setSyncStatus('saved');
+    } catch(err) {
+      setSyncStatus('error');
+      setSyncError(err instanceof Error?err.message:'Não foi possível recuperar o servidor.');
+    } finally {
+      saveBusyRef.current = false;setSyncResolving(false);
+    }
   };
   const getNextQuoteNumber = () => nextQuoteNumber(quotes, numberRef.current);
 
@@ -492,7 +570,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         activeView,
         setActiveView,
-        ready, syncStatus, syncError, getNextQuoteNumber, exportBackup, importBackup, importLegacyData, retrySync,
+        ready, syncStatus, syncError, syncConflict, syncResolving, downloadLocalAndLoadCloud,
+        getNextQuoteNumber, exportBackup, importBackup, importLegacyData, retrySync,
         quotes,
         sinapiSession, setSinapiSession,
         schedules, selectedScheduleId, setSelectedScheduleId, addSchedule, updateSchedule, deleteSchedule,

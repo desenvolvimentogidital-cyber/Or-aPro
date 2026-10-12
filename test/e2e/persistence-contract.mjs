@@ -131,6 +131,56 @@ try {
   assert.equal(server.payload.clients.length, 2, 'falha CAS nao pode sobrescrever servidor');
   assert.deepEqual(pageErrors, [], 'nao pode ocorrer excecao JavaScript silenciosa');
   console.log('PASS conflito reportado ao usuario; registros do servidor preservados');
+
+  // Simula o computador criando um cliente ao mesmo tempo que o celular.
+  // O aplicativo deve conciliar os IDs diferentes sem apagar nem duplicar.
+  server.rejectWrites = false;
+  server.payload.clients.push({id:'cli-other-device',name:'Cliente inserido no computador',phone:'(11) 90000-2222',email:''});
+  server.revision += 1;
+  await page.getByRole('button',{name:'Conciliar mudanças'}).click();
+  await waitUntil(()=>server.payload?.clients?.length===4,'conciliação de registros independentes não foi persistida');
+  await page.getByText('Dados na nuvem').first().waitFor();
+  await page.getByText('Cliente conflitante QA').waitFor();
+  await page.getByText('Cliente inserido no computador').waitFor();
+  assert.equal(server.payload.clients.filter(c=>c.id==='cli-other-device').length,1);
+  console.log('PASS concorrência realista: dois dispositivos adicionaram clientes diferentes e ambos foram preservados');
+
+  // Para gerar conflito verdadeiro, restaura localmente o MESMO cliente
+  // que outro dispositivo editou em paralelo. Não deve sobrescrever.
+  await page.getByRole('button',{name:'Backup',exact:true}).click();
+  const localSnapshotDownload=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Exportar dados em JSON'}).click();
+  const currentBackup=JSON.parse(await readFile(await (await localSnapshotDownload).path(),'utf8'));
+  await page.getByRole('button',{name:'Fechar'}).click();
+  const localName='Cliente alterado no celular';
+  const remoteName='Cliente alterado no computador';
+  currentBackup.data.clients.find(c=>c.id==='cli-other-device').name=localName;
+  server.payload.clients.find(c=>c.id==='cli-other-device').name=remoteName;
+  server.revision += 1;
+  server.rejectWrites=true;
+  await page.getByRole('button',{name:'Backup',exact:true}).click();
+  page.once('dialog',dialog=>dialog.accept());
+  await page.locator('input[type=file]').setInputFiles({
+    name:'orcapro-concurrent-edit.json',mimeType:'application/json',
+    buffer:Buffer.from(JSON.stringify(currentBackup))
+  });
+  await page.getByRole('button',{name:'Fechar'}).click();
+  await page.getByText('Erro de sincronização').first().waitFor({timeout:12_000});
+  server.rejectWrites=false;
+  await page.getByRole('button',{name:'Conciliar mudanças'}).click();
+  await page.getByText(/As duas sessões alteraram os mesmos dados/).waitFor({timeout:12_000});
+  assert.equal(server.payload.clients.find(c=>c.id==='cli-other-device').name,remoteName);
+  // UI offers safe exit: download complete unsaved local snapshot BEFORE replacing.
+  page.once('dialog',dialog=>dialog.accept());
+  const safeCopyDownload=page.waitForEvent('download');
+  await page.getByRole('button',{name:'Baixar cópia e carregar versão da nuvem'}).click();
+  const safeCopy=JSON.parse(await readFile(await (await safeCopyDownload).path(),'utf8'));
+  assert.equal(safeCopy.data.clients.find(c=>c.id==='cli-other-device').name,localName);
+  await page.getByText('Dados na nuvem').first().waitFor();
+  await page.getByText(remoteName).waitFor();
+  assert.equal(server.payload.clients.find(c=>c.id==='cli-other-device').name,remoteName);
+  assert.deepEqual(pageErrors,[],'no JS runtime exceptions during conflict recovery');
+  console.log('PASS collision detection: server preserved, local JSON backup saved before cloud reload');
 } finally {
   await browser.close();
 }

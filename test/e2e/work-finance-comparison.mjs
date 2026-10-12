@@ -88,6 +88,17 @@ try{
  assert.match(second,/R\$\s*400,00/);
  assert.match(second,/R\$\s*0,00/);
  assert.doesNotMatch(second,/R\$\s*350,00/,'do not mix cash across two works sharing quote');
+ // Works cards must agree with Financeiro even when two works share a quote.
+ await page.getByRole('navigation',{name:'Navegação Principal'})
+   .getByRole('button',{name:'Mais'}).click();
+ await page.getByRole('button',{name:/Obras e execução/}).click();
+ const vila=page.getByRole('heading',{name:'Obra da Vila'}).locator('xpath=ancestor::section[1]');
+ const escola=page.getByRole('heading',{name:'Obra da Escola'}).locator('xpath=ancestor::section[1]');
+ assert.match(await vila.innerText(),/Recebimentos vinculados\s*R\$\s*550,00/);
+ assert.match(await vila.innerText(),/Despesas vinculadas\s*R\$\s*200,00/);
+ assert.match(await escola.innerText(),/Recebimentos vinculados\s*R\$\s*0,00/);
+ assert.match(await escola.innerText(),/Despesas vinculadas\s*R\$\s*0,00/);
+ assert.match(await escola.innerText(),/sem obra definida não entram nos totais/);
  await page.reload({waitUntil:'domcontentloaded'});
  const again=await open();
  await again.getByLabel('Selecionar obra para comparar custos').selectOption('s1');

@@ -53,7 +53,8 @@ export const AppLayout: React.FC = () => {
     setViewMode,
     unreadNotificationsCount,
     setIsNotificationsOpen,
-    ready, syncError, syncStatus, retrySync
+    ready, syncError, syncStatus, retrySync,
+    syncConflict, syncResolving, downloadLocalAndLoadCloud
   } = useApp();
   const { session, logout } = useAuth();
 
@@ -108,7 +109,18 @@ export const AppLayout: React.FC = () => {
         <div className="flex flex-wrap items-center justify-end gap-2"><InstallAppButton/><BackupPanel />{session && <button className="text-slate-300 underline" onClick={() => { if (syncStatus !== 'saved' && !window.confirm('Há alterações não sincronizadas. Exporte um backup antes de sair. Deseja continuar?')) return; void logout(); }}>Sair</button>}</div>
       </div>
       {!ready && syncStatus === 'error' && <div role="alert" className="text-rose-200 text-xs px-3 py-2 w-full max-w-6xl">Falha ao carregar dados protegidos. <button className="underline" onClick={() => window.location.reload()}>Recarregar conexão</button></div>}
-      {syncError && <div role="alert" className="text-rose-200 text-xs px-3 py-2 bg-rose-950/90 w-full max-w-6xl">{syncError}. Exporte um backup antes de fechar. {ready && <button className="underline ml-2" onClick={() => { void retrySync(); }}>Tentar novamente</button>}</div>}
+      {syncError && <div role="alert" className="text-rose-200 text-xs px-3 py-3 bg-rose-950/90 w-full max-w-6xl space-y-2">
+        <p>{syncError} Suas alterações continuam neste aparelho enquanto esta tela permanecer aberta.</p>
+        {ready && <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={syncResolving} className="rounded-lg bg-white/15 px-3 py-2 font-semibold disabled:opacity-50"
+            onClick={() => { void retrySync(); }}>{syncConflict?'Conciliar mudanças':'Tentar salvar novamente'}</button>
+          {syncConflict&&<button type="button" disabled={syncResolving} className="rounded-lg border border-amber-500/50 px-3 py-2 font-semibold disabled:opacity-50"
+            onClick={() => { void downloadLocalAndLoadCloud(); }}>Baixar cópia e carregar versão da nuvem</button>}
+        </div>}
+      </div>}
+      {syncResolving&&<div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-5" role="status"
+        aria-label="Sincronização em andamento"><p className="rounded-xl border border-sky-400/30 bg-[#101d2a] p-5 text-center text-sm text-white">
+          Conferindo versões dos dados. Não feche esta página.</p></div>}
       {/* Top Device Switcher Toolbar (for desktop preview testing) */}
       <header className={`w-full ${scheduleWide ? 'max-w-[1720px]' : 'max-w-6xl'} hidden md:flex items-center justify-between mb-3 px-2 text-xs`}>
         <div className="flex items-center gap-2">
