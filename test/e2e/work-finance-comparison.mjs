@@ -94,10 +94,10 @@ try{
  await page.getByRole('button',{name:/Obras e execução/}).click();
  const vila=page.getByRole('heading',{name:'Obra da Vila'}).locator('xpath=ancestor::section[1]');
  const escola=page.getByRole('heading',{name:'Obra da Escola'}).locator('xpath=ancestor::section[1]');
- assert.match(await vila.innerText(),/Recebimentos vinculados\\s*R\\$\\s*550,00/);
- assert.match(await vila.innerText(),/Despesas vinculadas\\s*R\\$\\s*200,00/);
- assert.match(await escola.innerText(),/Recebimentos vinculados\\s*R\\$\\s*0,00/);
- assert.match(await escola.innerText(),/Despesas vinculadas\\s*R\\$\\s*0,00/);
+ assert.match(await vila.innerText(),/Recebimentos vinculados\s*R\$\s*550,00/);
+ assert.match(await vila.innerText(),/Despesas vinculadas\s*R\$\s*200,00/);
+ assert.match(await escola.innerText(),/Recebimentos vinculados\s*R\$\s*0,00/);
+ assert.match(await escola.innerText(),/Despesas vinculadas\s*R\$\s*0,00/);
  assert.match(await escola.innerText(),/sem obra definida não entram nos totais/);
  await page.reload({waitUntil:'domcontentloaded'});
  const again=await open();
