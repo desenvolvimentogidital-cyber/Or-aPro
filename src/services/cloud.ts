@@ -71,14 +71,27 @@ export async function loadWorkspace(session: Session): Promise<{ data: Workspace
   return result.length ? { data: result[0].payload, revision: result[0].revision } : { data: null, revision: 0 };
 }
 
+/** The revision changed in another tab/device; do not repeat a blind overwrite. */
+export class WorkspaceConflictError extends Error {
+  constructor() { super('Outra sessão atualizou os dados. É necessário conciliar as alterações antes de salvar.'); this.name='WorkspaceConflictError'; }
+}
+
 export async function saveWorkspace(session: Session, payload: WorkspaceData, revision: number): Promise<number> {
   const uri = revision === 0 ? '/rest/v1/orcapro_workspaces' : `/rest/v1/orcapro_workspaces?user_id=eq.${encodeURIComponent(session.user.id)}&revision=eq.${revision}`;
-  const rows = await jsonRequest<{revision: number}[]>(uri, {
-    method: revision === 0 ? 'POST' : 'PATCH',
-    headers: { Prefer: 'return=representation' },
-    body: JSON.stringify(revision === 0 ? { user_id: session.user.id, revision: 1, payload } : { revision: revision + 1, payload })
-  }, session.access_token);
-  if (rows.length !== 1) throw new Error('Conflito de sincronização: existem alterações feitas em outra sessão. Exporte um backup antes de atualizar.');
+  let rows:{revision:number}[];
+  try {
+    rows = await jsonRequest<{revision: number}[]>(uri, {
+      method: revision === 0 ? 'POST' : 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: JSON.stringify(revision === 0 ? { user_id: session.user.id, revision: 1, payload } : { revision: revision + 1, payload })
+    }, session.access_token);
+  } catch (error) {
+    // Supabase returns 409 when two tabs try to create the first workspace.
+    if (error instanceof Error && /HTTP 409\)/.test(error.message)) throw new WorkspaceConflictError();
+    throw error;
+  }
+  // PostgREST returns [] for a PATCH whose revision is no longer current.
+  if (rows.length !== 1) throw new WorkspaceConflictError();
   return rows[0].revision;
 }
 
