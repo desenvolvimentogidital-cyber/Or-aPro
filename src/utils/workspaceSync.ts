@@ -58,12 +58,12 @@ export function reconcileWorkspaces(base: WorkspaceData, local: WorkspaceData, r
   const company=Object.fromEntries(
     [...new Set([...Object.keys(base.company??{}),...Object.keys(local.company??{}),...Object.keys(remote.company??{})])]
       .map(k=>[k,choose(
-        (base.company as Record<string,unknown>)[k],
-        (local.company as Record<string,unknown>)[k],
-        (remote.company as Record<string,unknown>)[k],
+        (base.company as unknown as Record<string,unknown>)[k],
+        (local.company as unknown as Record<string,unknown>)[k],
+        (remote.company as unknown as Record<string,unknown>)[k],
         'Dados da empresa ('+k+')'
       )])
-  ) as WorkspaceData['company'];
+  ) as unknown as WorkspaceData['company'];
   const merged:WorkspaceData = {
     quotes:collection('Orçamentos',base.quotes,local.quotes,remote.quotes),
     clients:collection('Clientes',base.clients,local.clients,remote.clients),
