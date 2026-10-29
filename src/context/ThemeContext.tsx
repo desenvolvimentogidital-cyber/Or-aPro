@@ -104,7 +104,19 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setTheme] = useState<PlatformTheme>(() => {
     try {
       const saved = localStorage.getItem(themeStorageKey);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const previous: unknown = JSON.parse(saved);
+        if (previous && typeof previous === 'object' && !Array.isArray(previous)) {
+          // Old/incomplete themes must not crash the logged-in workspace.
+          const restored = { ...defaultTheme, ...previous } as PlatformTheme;
+          for (const color of ['primaryColor', 'primaryHover', 'secondaryColor', 'backgroundColor', 'cardColor', 'textColor'] as const) {
+            if (typeof restored[color] !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(restored[color])) {
+              restored[color] = defaultTheme[color];
+            }
+          }
+          return restored;
+        }
+      }
     } catch {
       // fallback
     }
