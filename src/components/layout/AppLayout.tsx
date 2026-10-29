@@ -210,7 +210,22 @@ export const AppLayout: React.FC = () => {
         )}
         {/* Content View with smooth scroll */}
         <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-contain px-3 pt-2 no-scrollbar relative sm:px-4 lg:col-start-2 lg:row-start-1 lg:px-7 lg:pt-5">
-          {ready ? renderActiveView() : <div role="status" className="p-6 text-center text-sm text-slate-300">Carregando dados protegidos… Se o carregamento falhar, verifique a configuração do banco e faça login novamente.</div>}
+          {ready ? renderActiveView() : (
+            <div className="flex min-h-[55vh] items-center justify-center px-2 py-8">
+              <section role={syncStatus === 'error' ? 'alert' : 'status'} className="w-full max-w-lg rounded-2xl border border-sky-400/30 bg-[#192a3a] p-6 text-center shadow-xl">
+                <h1 className="text-lg font-bold text-white">{syncStatus === 'error' ? 'Não foi possível abrir sua conta' : 'Abrindo seu OrçaPro…'}</h1>
+                <p className="mt-3 text-sm text-slate-200">{syncStatus === 'error'
+                  ? 'Não foi possível carregar os dados agora. Seus registros permanecem no Supabase; não é necessário apagar o aplicativo.'
+                  : 'Conectando aos seus orçamentos e obras com segurança.'}</p>
+                {syncStatus === 'error' && (
+                  <div className="mt-5 flex flex-wrap justify-center gap-3">
+                    <button type="button" className="rounded-xl bg-sky-500 px-4 py-3 font-semibold text-slate-950" onClick={() => window.location.reload()}>Tentar novamente</button>
+                    <button type="button" className="rounded-xl border border-white/30 px-4 py-3 font-semibold text-white" onClick={() => { void logout(); }}>Voltar ao login</button>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
         </div>
 
         {/* BOTTOM NAVIGATION BAR (Referência visual 48471.png: Início | Clientes | (+) | Orçamentos | Mais) */}
