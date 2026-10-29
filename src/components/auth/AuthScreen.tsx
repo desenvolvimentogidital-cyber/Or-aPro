@@ -12,7 +12,7 @@ export function AuthScreen() {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     return hash.get('type') === 'recovery' ? hash.get('access_token') : null;
   });
-  const [mode, setMode] = useState<AuthMode>(recoveryToken ? 'set-password' : 'login');
+  const [mode, setMode] = useState<AuthMode>(recoveryToken ? 'set-password' : new URLSearchParams(window.location.search).get('cadastro') === '1' ? 'register' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
