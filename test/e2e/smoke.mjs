@@ -44,6 +44,11 @@ try {
     console.log(`PASS browser smoke ${viewport.width}x${viewport.height}`);
     await page.close();
   }
+  // Direct registration link opens a blank new-account form, without touching old workspaces.
+  const signupPage = await browser.newPage();
+  await signupPage.goto(base+'?cadastro=1', { waitUntil:'domcontentloaded' });
+  await signupPage.getByRole('heading', { name: 'Crie sua conta' }).waitFor();
+  await signupPage.close();
   const page = await browser.newPage();
   await page.goto(base+'?proposta=token-invalido', { waitUntil:'domcontentloaded' });
   await page.getByRole('alert').waitFor({ timeout: 10000 });
