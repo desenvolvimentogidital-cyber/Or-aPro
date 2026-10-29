@@ -48,7 +48,9 @@ export async function signIn(email: string, password: string) {
   return parseAuthSession(result);
 }
 export async function signUp(email: string, password: string) {
-  const result = await jsonRequest<any>('/auth/v1/signup', { method: 'POST', body: JSON.stringify({ email, password }) });
+  // Keep confirmation links on the same published OrçaPro origin, not an old Supabase Site URL.
+  const redirectTo = encodeURIComponent(window.location.origin + window.location.pathname);
+  const result = await jsonRequest<any>(`/auth/v1/signup?redirect_to=${redirectTo}`, { method: 'POST', body: JSON.stringify({ email, password }) });
   return result.session ? parseAuthSession({ ...result.session, user: result.user }) : (result.access_token ? parseAuthSession(result) : null);
 }
 export async function resetPassword(email: string): Promise<void> {
