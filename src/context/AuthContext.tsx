@@ -30,14 +30,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!cloudEnabled || !session) { setLoading(false); return; }
     let active = true;
     const check = async () => {
+      // A stalled connection must not leave the user on an endless dark loading screen.
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 12_000);
       try {
         // Refresh proactively to avoid a stale JWT and a failed save.
         if (session.expires_at - Date.now() < 5 * 60_000) {
-          const fresh = await refreshSession(session.refresh_token);
+          const fresh = await refreshSession(session.refresh_token, controller.signal);
           if (active) apply(fresh);
         }
-      } catch { if (active) apply(null); }
-      finally { if (active) setLoading(false); }
+      } catch {
+        // Only clear the browser session. No customer records are deleted from Supabase.
+        if (active) apply(null);
+      } finally {
+        window.clearTimeout(timeout);
+        if (active) setLoading(false);
+      }
     };
     void check();
     const timer = setInterval(check, 60_000);
@@ -50,5 +58,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     recover: resetPassword,
     logout: async () => { try { if (session) await signOut(session.access_token); } finally { apply(null); } }
   };
-  return <Context.Provider value={value}>{loading ? <div className="min-h-screen grid place-items-center bg-[#0c0e14] text-white">Verificando sessão…</div> : children}</Context.Provider>;
+  return <Context.Provider value={value}>{loading ? (
+    <main role="status" className="min-h-[100dvh] grid place-items-center bg-slate-100 px-5 text-slate-900">
+      <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-sm">
+        <h1 className="text-xl font-bold">OrçaPro</h1>
+        <p className="mt-3 text-sm text-slate-600">Verificando seu acesso com segurança…</p>
+      </div>
+    </main>
+  ) : children}</Context.Provider>;
 }
