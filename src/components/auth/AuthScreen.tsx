@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { CalendarDays, Eye, EyeOff, FileText, HardHat, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { setRecoveredPassword } from '../../services/cloud';
@@ -17,7 +17,20 @@ export function AuthScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return hash.get('type') === 'signup'
+      ? 'E-mail confirmado. Entre com o e-mail e a senha cadastrados para acessar o OrçaPro.'
+      : '';
+  });
+  useEffect(() => {
+    // Confirmation links may contain an access token in the URL fragment.
+    // This app requires explicit sign-in, so do not leave that token in browser history.
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (hash.get('type') === 'signup') {
+      window.history.replaceState({}, '', window.location.pathname + window.location.search);
+    }
+  }, []);
   const [isError, setIsError] = useState(false);
 
   const switchMode = (nextMode: AuthMode) => {
@@ -36,7 +49,7 @@ export function AuthScreen() {
       if (mode === 'login') await login(email.trim(), password);
       if (mode === 'register') {
         const loggedIn = await register(email.trim(), password);
-        if (!loggedIn) setMessage('Cadastro solicitado. Verifique seu e-mail se a confirmação estiver habilitada no Supabase.');
+        if (!loggedIn) setMessage('Cadastro solicitado. Confira o e-mail informado, abra o link de confirmação e depois entre com sua senha.');
       }
       if (mode === 'recover') {
         await recover(email.trim());
@@ -50,7 +63,20 @@ export function AuthScreen() {
       }
     } catch (err) {
       setIsError(true);
-      setMessage(err instanceof Error ? err.message : 'Não foi possível autenticar. Tente novamente.');
+      const detail = err instanceof Error ? err.message : '';
+      setMessage(
+        /invalid login credentials|invalid password|invalid_grant/i.test(detail)
+          ? 'E-mail ou senha incorretos. Confira os dados ou use Esqueci minha senha.'
+          : /email not confirmed|email_not_confirmed/i.test(detail)
+            ? 'Confirme o e-mail de cadastro pelo link enviado antes de entrar.'
+            : /rate limit|too many requests/i.test(detail)
+              ? 'Muitas tentativas. Aguarde e tente novamente.'
+              : /signup.*disabled|signups not allowed/i.test(detail)
+                ? 'O cadastro de novas contas está desativado no Supabase. Verifique Auth > Providers.'
+                : /failed to fetch|networkerror|fetch failed|aborterror/i.test(detail)
+                  ? 'Não foi possível conectar ao Supabase. Confira sua conexão e tente novamente.'
+                  : detail || 'Não foi possível autenticar. Tente novamente.'
+      );
     } finally {
       setBusy(false);
     }
@@ -60,7 +86,7 @@ export function AuthScreen() {
     : mode === 'register' ? 'Crie sua conta'
     : mode === 'set-password' ? 'Defina sua nova senha' : 'Recupere o acesso';
   const description = mode === 'login' ? 'Acesse seus orçamentos, obras e cronogramas em um só lugar.'
-    : mode === 'register' ? 'Comece a organizar orçamentos e obras com sua própria conta.'
+    : mode === 'register' ? 'Cadastre outro e-mail para ter um espaço de trabalho separado. As contas e os dados antigos serão preservados.'
     : mode === 'set-password' ? 'Escolha uma senha nova para acessar novamente o OrçaPro.'
     : 'Informe seu e-mail para receber as instruções de recuperação.';
 
@@ -115,7 +141,7 @@ export function AuthScreen() {
               <div>
                 <label htmlFor="orcapro-auth-password" className="block text-sm font-medium text-slate-200">Senha</label>
                 <div className="relative mt-2">
-                  <input id="orcapro-auth-password" required type={showPassword ? 'text' : 'password'} minLength={8}
+                  <input id="orcapro-auth-password" required type={showPassword ? 'text' : 'password'} minLength={mode === 'login' ? undefined : 8}
                     autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={e => setPassword(e.target.value)}
                     placeholder={mode === 'login' ? 'Sua senha' : 'Pelo menos 8 caracteres'}
                     className="w-full rounded-xl border border-white/15 bg-[#0a1019] px-4 py-3.5 pr-14 text-base text-white outline-none placeholder:text-slate-600 focus:border-orange-400 focus:ring-2 focus:ring-orange-500/20" />
