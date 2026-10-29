@@ -57,17 +57,17 @@ export async function resetPassword(email: string): Promise<void> {
 export async function setRecoveredPassword(accessToken: string, password: string): Promise<void> {
   await jsonRequest('/auth/v1/user', { method: 'PUT', body: JSON.stringify({ password }) }, accessToken);
 }
-export async function refreshSession(refreshToken: string) {
-  const result = await jsonRequest<any>('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) });
+export async function refreshSession(refreshToken: string, signal?: AbortSignal) {
+  const result = await jsonRequest<any>('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }), signal });
   return parseAuthSession(result);
 }
 export async function signOut(token: string) {
   try { await jsonRequest('/auth/v1/logout', { method: 'POST' }, token); } finally { persistSession(null); }
 }
 
-export async function loadWorkspace(session: Session): Promise<{ data: WorkspaceData | null; revision: number }> {
+export async function loadWorkspace(session: Session, signal?: AbortSignal): Promise<{ data: WorkspaceData | null; revision: number }> {
   const result = await jsonRequest<{ payload: WorkspaceData; revision: number }[]>(
-    `/rest/v1/orcapro_workspaces?user_id=eq.${encodeURIComponent(session.user.id)}&select=payload,revision`, {}, session.access_token);
+    `/rest/v1/orcapro_workspaces?user_id=eq.${encodeURIComponent(session.user.id)}&select=payload,revision`, { signal }, session.access_token);
   return result.length ? { data: result[0].payload, revision: result[0].revision } : { data: null, revision: 0 };
 }
 
