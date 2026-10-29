@@ -214,18 +214,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
+    const controller = new AbortController();
+    // Avoid an endless loading state when the database or network stops responding.
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     setReady(false);
     setSyncConflict(false);
-    loadWorkspace(session).then(({ data, revision }) => {
+    loadWorkspace(session, controller.signal).then(({ data, revision }) => {
       if (cancelled) return;
       revisionRef.current = revision;
       if (data) applySnapshot(data);
       else applySnapshot({ quotes: [], clients: [], catalog: [], expenses: [], company: emptyCompany, notifications: [], financeEntries: [], lastQuoteNumber: 0 });
       setSyncError(''); setSyncStatus('saved'); setSyncConflict(false); setReady(true);
     }).catch(err => {
-      if (!cancelled) { setSyncStatus('error'); setSyncError(`Não foi possível carregar seus dados: ${err.message}`); }
-    });
-    return () => { cancelled = true; };
+      if (!cancelled) {
+        setSyncStatus('error');
+        setSyncError(err instanceof Error && err.name === 'AbortError'
+          ? 'A conexão com o banco demorou demais. Verifique sua internet e tente novamente.'
+          : `Não foi possível carregar seus dados: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
+      }
+    }).finally(() => window.clearTimeout(timeout));
+    return () => { cancelled = true; window.clearTimeout(timeout); controller.abort(); };
   }, [session?.user.id]);
 
   // In cloud mode serialize all writes; revision check avoids silent overwrites between tabs/devices.
